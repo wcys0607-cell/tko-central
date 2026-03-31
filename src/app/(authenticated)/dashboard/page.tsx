@@ -82,128 +82,140 @@ export default function DashboardPage() {
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
 
   const load = useCallback(async () => {
-    try {
     const today = new Date().toISOString().split("T")[0];
     const d30 = new Date();
     d30.setDate(d30.getDate() - 30);
     const thirtyDaysAgo = d30.toISOString().split("T")[0];
 
-    const [todayRes, pendingRes, outstandingRes, stockRes, revenueRes, fleetRes, recentRes] =
-      await Promise.all([
-        supabase
-          .from("orders")
-          .select("quantity_liters, total_sale")
-          .eq("order_date", today)
-          .not("status", "eq", "cancelled"),
-        supabase
-          .from("orders")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "pending"),
-        supabase
-          .from("orders")
-          .select("total_sale, bukku_payment_status")
-          .not("bukku_invoice_id", "is", null),
-        supabase
-          .from("stock_locations")
-          .select("code, name, current_balance, capacity_liters, low_threshold, type")
-          .eq("type", "tank"),
-        supabase
-          .from("orders")
-          .select("order_date, quantity_liters, total_sale")
-          .gte("order_date", thirtyDaysAgo)
-          .in("status", ["approved", "delivered"])
-          .order("order_date"),
-        supabase
-          .from("fleet_documents")
-          .select("id, vehicle_id, doc_type, days_remaining, status, vehicle:vehicles!fleet_documents_vehicle_id_fkey(plate_number)")
-          .or("status.eq.expiring_soon,status.eq.expired")
-          .order("days_remaining"),
-        supabase
-          .from("orders")
-          .select("id, order_date, quantity_liters, status, customer:customers!orders_customer_id_fkey(name)")
-          .order("created_at", { ascending: false })
-          .limit(10),
-      ]);
+    // Fetch each section independently — one failure won't block others
+    // KPI: Today's orders
+    try {
+      const { data } = await supabase
+        .from("orders")
+        .select("quantity_liters, total_sale")
+        .eq("order_date", today)
+        .neq("status", "cancelled");
+      const orders = data ?? [];
+      setTodayCount(orders.length);
+      setTodayLiters(orders.reduce((s: number, o: { quantity_liters: number | null }) => s + (o.quantity_liters ?? 0), 0));
+      setTodayRevenue(orders.reduce((s: number, o: { total_sale: number | null }) => s + (o.total_sale ?? 0), 0));
+    } catch (e) { console.error("Dashboard: today orders", e); }
 
-    // KPI: Today
-    const todayOrders = todayRes.data ?? [];
-    setTodayCount(todayOrders.length);
-    setTodayLiters(
-      todayOrders.reduce((s: number, o: { quantity_liters: number | null }) => s + (o.quantity_liters ?? 0), 0)
-    );
-    setTodayRevenue(
-      todayOrders.reduce((s: number, o: { total_sale: number | null }) => s + (o.total_sale ?? 0), 0)
-    );
+    // KPI: Pending
+    try {
+      const { count } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending");
+      setPendingCount(count ?? 0);
+    } catch (e) { console.error("Dashboard: pending", e); }
 
-    setPendingCount(pendingRes.count ?? 0);
+    // KPI: Outstanding (skip if no bukku invoices yet)
+    try {
+      const { data } = await supabase
+        .from("orders")
+        .select("total_sale, bukku_payment_status")
+        .not("bukku_invoice_id", "is", null);
+      const outOrders = (data ?? []).filter(
+        (o: { bukku_payment_status: string | null }) => o.bukku_payment_status !== "paid"
+      );
+      setOutstanding(outOrders.reduce((s: number, o: { total_sale: number | null }) => s + (o.total_sale ?? 0), 0));
+      setOverdueCount(outOrders.filter((o: { bukku_payment_status: string | null }) => o.bukku_payment_status === "overdue").length);
+    } catch (e) { console.error("Dashboard: outstanding", e); }
 
-    const outOrders = (outstandingRes.data ?? []).filter(
-      (o: { bukku_payment_status: string | null }) => o.bukku_payment_status !== "paid"
-    );
-    setOutstanding(
-      outOrders.reduce((s: number, o: { total_sale: number | null }) => s + (o.total_sale ?? 0), 0)
-    );
-    setOverdueCount(
-      outOrders.filter((o: { bukku_payment_status: string | null }) => o.bukku_payment_status === "overdue").length
-    );
-
-    const tanks = (stockRes.data ?? []) as (TankLevel & { low_threshold?: number | null })[];
-    setTotalStock(tanks.reduce((s, t) => s + (t.current_balance ?? 0), 0));
-    setLowStockCount(tanks.filter((t) => t.low_threshold && (t.current_balance ?? 0) < t.low_threshold).length);
-    setTankLevels(tanks);
+    // Stock levels
+    try {
+      const { data } = await supabase
+        .from("stock_locations")
+        .select("code, name, current_balance, capacity_liters, low_threshold, type")
+        .eq("type", "tank");
+      const tanks = (data ?? []) as (TankLevel & { low_threshold?: number | null })[];
+      setTotalStock(tanks.reduce((s, t) => s + (t.current_balance ?? 0), 0));
+      setLowStockCount(tanks.filter((t) => t.low_threshold && (t.current_balance ?? 0) < t.low_threshold).length);
+      setTankLevels(tanks);
+    } catch (e) { console.error("Dashboard: stock", e); }
 
     // Revenue chart
-    const revMap = new Map<string, DailyRevenue>();
-    for (const o of revenueRes.data ?? []) {
-      const d = o.order_date;
-      const existing = revMap.get(d);
-      if (existing) {
-        existing.revenue += o.total_sale ?? 0;
-        existing.liters += o.quantity_liters ?? 0;
-        existing.count++;
-      } else {
-        revMap.set(d, {
-          date: d,
-          label: new Date(d).toLocaleDateString("en-MY", { month: "short", day: "numeric" }),
-          revenue: o.total_sale ?? 0,
-          liters: o.quantity_liters ?? 0,
-          count: 1,
-        });
+    try {
+      const { data } = await supabase
+        .from("orders")
+        .select("order_date, quantity_liters, total_sale")
+        .gte("order_date", thirtyDaysAgo)
+        .in("status", ["approved", "delivered"])
+        .order("order_date");
+      const revMap = new Map<string, DailyRevenue>();
+      for (const o of data ?? []) {
+        const d = o.order_date;
+        const existing = revMap.get(d);
+        if (existing) {
+          existing.revenue += o.total_sale ?? 0;
+          existing.liters += o.quantity_liters ?? 0;
+          existing.count++;
+        } else {
+          revMap.set(d, {
+            date: d,
+            label: new Date(d).toLocaleDateString("en-MY", { month: "short", day: "numeric" }),
+            revenue: o.total_sale ?? 0,
+            liters: o.quantity_liters ?? 0,
+            count: 1,
+          });
+        }
       }
-    }
-    setRevenueData(Array.from(revMap.values()));
+      setRevenueData(Array.from(revMap.values()));
+    } catch (e) { console.error("Dashboard: revenue", e); }
 
     // Fleet alerts
-    const alerts: FleetAlert[] = [];
-    for (const doc of fleetRes.data ?? []) {
-      const plate = Array.isArray(doc.vehicle) ? doc.vehicle[0]?.plate_number : doc.vehicle?.plate_number;
-      alerts.push({
+    try {
+      const { data } = await supabase
+        .from("fleet_documents")
+        .select("id, vehicle_id, doc_type, days_remaining, status")
+        .or("status.eq.expiring_soon,status.eq.expired")
+        .order("days_remaining")
+        .limit(10);
+      // Get vehicle plate numbers separately to avoid join issues
+      const vehicleIds = [...new Set((data ?? []).map((d: { vehicle_id: string }) => d.vehicle_id))];
+      const { data: vehicles } = vehicleIds.length > 0
+        ? await supabase.from("vehicles").select("id, plate_number").in("id", vehicleIds)
+        : { data: [] };
+      const plateMap = new Map<string, string>();
+      for (const v of vehicles ?? []) plateMap.set(v.id, v.plate_number);
+
+      const alerts: FleetAlert[] = (data ?? []).map((doc: { id: string; vehicle_id: string; doc_type: string; days_remaining: number | null; status: string | null }) => ({
         id: doc.id,
         vehicle_id: doc.vehicle_id,
-        plate_number: plate ?? "Unknown",
+        plate_number: plateMap.get(doc.vehicle_id) ?? "Unknown",
         doc_type: doc.doc_type,
         days_remaining: doc.days_remaining,
         status: doc.status,
-      });
-    }
-    setFleetAlerts(alerts.slice(0, 10));
+      }));
+      setFleetAlerts(alerts);
+    } catch (e) { console.error("Dashboard: fleet", e); }
 
     // Recent orders
-    const recent: RecentOrder[] = [];
-    for (const o of recentRes.data ?? []) {
-      const custName = Array.isArray(o.customer) ? o.customer[0]?.name : o.customer?.name;
-      recent.push({
+    try {
+      const { data } = await supabase
+        .from("orders")
+        .select("id, order_date, quantity_liters, status, customer_id")
+        .order("created_at", { ascending: false })
+        .limit(10);
+      // Get customer names separately
+      const customerIds = [...new Set((data ?? []).map((o: { customer_id: string | null }) => o.customer_id).filter(Boolean))];
+      const { data: customers } = customerIds.length > 0
+        ? await supabase.from("customers").select("id, name").in("id", customerIds as string[])
+        : { data: [] };
+      const nameMap = new Map<string, string>();
+      for (const c of customers ?? []) nameMap.set(c.id, c.name);
+
+      const recent: RecentOrder[] = (data ?? []).map((o: { id: string; order_date: string; quantity_liters: number | null; status: string; customer_id: string | null }) => ({
         id: o.id,
         order_date: o.order_date,
-        customer_name: custName ?? "—",
+        customer_name: o.customer_id ? (nameMap.get(o.customer_id) ?? "—") : "—",
         quantity_liters: o.quantity_liters,
         status: o.status,
-      });
-    }
-    setRecentOrders(recent);
-    } catch (err) {
-      console.error("Dashboard load error:", err);
-    }
+      }));
+      setRecentOrders(recent);
+    } catch (e) { console.error("Dashboard: recent orders", e); }
+
     setLoading(false);
   }, [supabase]);
 
