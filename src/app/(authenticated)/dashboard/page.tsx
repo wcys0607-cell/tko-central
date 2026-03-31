@@ -65,7 +65,6 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function DashboardPage() {
   const supabase = createClient();
-  const [loading, setLoading] = useState(true);
 
   const [todayCount, setTodayCount] = useState(0);
   const [todayLiters, setTodayLiters] = useState(0);
@@ -87,7 +86,7 @@ export default function DashboardPage() {
     d30.setDate(d30.getDate() - 30);
     const thirtyDaysAgo = d30.toISOString().split("T")[0];
 
-    // Fetch each section independently — one failure won't block others
+    // Fetch each section independently and in parallel — one failure won't block others
     // KPI: Today's orders
     try {
       const { data } = await supabase
@@ -215,17 +214,11 @@ export default function DashboardPage() {
       }));
       setRecentOrders(recent);
     } catch (e) { console.error("Dashboard: recent orders", e); }
-
-    setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
     load();
   }, [load]);
-
-  if (loading) {
-    return <div className="p-6 text-muted-foreground">Loading dashboard...</div>;
-  }
 
   return (
     <div className="p-4 md:p-6 space-y-4">
