@@ -7,12 +7,25 @@ interface BukkuContact {
   company_name?: string;
   email?: string;
   phone?: string;
+  fax?: string;
+  website?: string;
   tax_number?: string;
+  registration_number?: string;
   address?: string;
+  billing_address?: string;
   delivery_address?: string;
   shipping_address?: string;
   addresses?: { address?: string; type?: string }[];
+  contact_person?: string;
+  contact_person_phone?: string;
+  contact_person_email?: string;
+  payment_terms?: number;
+  credit_limit?: number;
+  bank_name?: string;
+  bank_account?: string;
+  notes?: string;
   type?: string;
+  [key: string]: unknown; // capture any other fields
 }
 
 interface SyncResult {
@@ -44,7 +57,8 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
   // Get all existing customers
   const { data: customers } = await supabase
     .from("customers")
-    .select("id, name, bukku_contact_id, tin_number");
+    .select("id, name, bukku_contact_id, tin_number")
+    .order("name");
 
   const customersByName = new Map<string, { id: string; tin_number: string | null }>();
   const customersByBukkuId = new Set<number>();
@@ -68,16 +82,31 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
     const existing = customersByName.get(contactName.toLowerCase());
 
     if (existing) {
-      // Update existing customer with Bukku ID
+      // Update existing customer with Bukku ID + all available details
       const updates: Record<string, unknown> = {
         bukku_contact_id: contact.id,
         bukku_sync_status: "synced",
+        bukku_raw: contact,
       };
 
-      // Update TIN if missing in our DB but present in Bukku
-      if (!existing.tin_number && contact.tax_number) {
-        updates.tin_number = contact.tax_number;
-      }
+      // Fill in fields from Bukku if missing in our DB
+      if (!existing.tin_number && contact.tax_number) updates.tin_number = contact.tax_number;
+      if (contact.registration_number) updates.registration_number = contact.registration_number;
+      if (contact.phone) updates.phone = contact.phone;
+      if (contact.email) updates.email = contact.email;
+      if (contact.fax) updates.fax = contact.fax;
+      if (contact.website) updates.website = contact.website;
+      if (contact.address) updates.address = contact.address;
+      if (contact.billing_address) updates.billing_address = contact.billing_address;
+      if (contact.shipping_address) updates.shipping_address = contact.shipping_address;
+      if (contact.contact_person) updates.contact_person = contact.contact_person;
+      if (contact.contact_person_phone) updates.contact_person_phone = contact.contact_person_phone;
+      if (contact.contact_person_email) updates.contact_person_email = contact.contact_person_email;
+      if (contact.payment_terms) updates.payment_terms = contact.payment_terms;
+      if (contact.credit_limit) updates.credit_limit = contact.credit_limit;
+      if (contact.bank_name) updates.bank_name = contact.bank_name;
+      if (contact.bank_account) updates.bank_account = contact.bank_account;
+      if (contact.notes) updates.notes = contact.notes;
 
       const { error } = await supabase
         .from("customers")
@@ -93,7 +122,7 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
         await syncContactAddresses(supabase, existing.id, contact);
       }
     } else {
-      // Create new customer from Bukku data
+      // Create new customer from Bukku data with all available details
       const { data: newCustomer, error } = await supabase
         .from("customers")
         .insert({
@@ -102,8 +131,22 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
           email: contact.email || null,
           address: contact.address || null,
           tin_number: contact.tax_number || null,
+          registration_number: contact.registration_number || null,
+          billing_address: contact.billing_address || null,
+          shipping_address: contact.shipping_address || null,
+          fax: contact.fax || null,
+          website: contact.website || null,
+          contact_person: contact.contact_person || null,
+          contact_person_phone: contact.contact_person_phone || null,
+          contact_person_email: contact.contact_person_email || null,
+          payment_terms: contact.payment_terms || null,
+          credit_limit: contact.credit_limit || null,
+          bank_name: contact.bank_name || null,
+          bank_account: contact.bank_account || null,
+          notes: contact.notes || null,
           bukku_contact_id: contact.id,
           bukku_sync_status: "synced",
+          bukku_raw: contact,
           is_active: true,
         })
         .select("id")

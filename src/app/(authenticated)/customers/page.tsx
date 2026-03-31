@@ -28,7 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Pencil, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight, Eye } from "lucide-react";
+import Link from "next/link";
 
 const EMPTY_FORM = {
   name: "",
@@ -206,8 +207,10 @@ export default function CustomersPage() {
               filtered.map((c) => (
                 <TableRow key={c.id} className="hover:bg-gray-50">
                   <TableCell>
-                    <div className="font-medium">{c.name}</div>
-                    {c.short_name && <div className="text-xs text-muted-foreground">{c.short_name}</div>}
+                    <Link href={`/customers/${c.id}`} className="hover:underline">
+                      <div className="font-medium text-[#1A3A5C]">{c.name}</div>
+                      {c.short_name && <div className="text-xs text-muted-foreground">{c.short_name}</div>}
+                    </Link>
                   </TableCell>
                   <TableCell className="text-sm">{c.phone ?? "—"}</TableCell>
                   <TableCell className="text-sm">
@@ -241,6 +244,11 @@ export default function CustomersPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <Link href={`/customers/${c.id}`}>
+                        <Button variant="ghost" size="icon" title="View details">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </Link>
                       <Button variant="ghost" size="icon" onClick={() => openEdit(c)} title="Edit">
                         <Pencil className="h-4 w-4" />
                       </Button>
