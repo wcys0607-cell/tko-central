@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { StockLocation, StockTake } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +27,7 @@ function varianceColor(pct: number): string {
 }
 
 export default function StockTakePage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [entries, setEntries] = useState<StockTakeEntry[]>([]);
   const [history, setHistory] = useState<StockTake[]>([]);

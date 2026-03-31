@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { RecurringRule, Customer } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ const EMPTY_FORM = {
 };
 
 export default function RecurringRulesPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const [rules, setRules] = useState<RecurringRule[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);

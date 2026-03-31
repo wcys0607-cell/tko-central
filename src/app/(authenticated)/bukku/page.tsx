@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Customer, Product, Order } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,7 +39,7 @@ interface SyncLog {
 }
 
 export default function BukkuPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   // Contact mapping
   const [customers, setCustomers] = useState<Customer[]>([]);

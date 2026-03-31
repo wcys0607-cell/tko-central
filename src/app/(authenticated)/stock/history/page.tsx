@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { StockLocation } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,7 +48,7 @@ const COLORS = [
 ];
 
 export default function StockHistoryPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [selectedLocIds, setSelectedLocIds] = useState<string[]>([]);
   const [chartData, setChartData] = useState<HistoryPoint[]>([]);

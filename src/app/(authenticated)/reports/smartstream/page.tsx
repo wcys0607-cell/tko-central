@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,7 +52,7 @@ function getMonthOptions() {
 }
 
 export default function SmartStreamReportPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const monthOptions = getMonthOptions();
   const [month, setMonth] = useState(monthOptions[0].value);
   const [data, setData] = useState<TruckGroup[]>([]);

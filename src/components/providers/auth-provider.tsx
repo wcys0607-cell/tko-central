@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -39,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     async function loadUser() {

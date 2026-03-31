@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, use } from "react";
+import { useEffect, useState, useCallback, use, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Vehicle, FleetDocument, MaintenanceLog, DriverChecklist } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,7 +49,7 @@ export default function VehicleDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [documents, setDocuments] = useState<FleetDocument[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceLog[]>([]);

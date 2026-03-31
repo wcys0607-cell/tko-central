@@ -8,6 +8,16 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { data: driverRecord } = await supabase
+    .from("drivers")
+    .select("role")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  if (!driverRecord || !["admin", "manager"].includes(driverRecord.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { month } = await req.json();
   if (!month) return NextResponse.json({ error: "month required" }, { status: 400 });
 

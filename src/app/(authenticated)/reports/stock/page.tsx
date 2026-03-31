@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ interface LocationVariance {
 }
 
 export default function StockReportPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const now = new Date();
   const [fromDate, setFromDate] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`

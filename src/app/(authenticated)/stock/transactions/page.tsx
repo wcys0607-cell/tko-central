@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { StockTransaction, StockLocation } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,7 +27,7 @@ const TYPE_COLORS: Record<string, string> = {
 const PAGE_SIZE = 50;
 
 export default function TransactionLogPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [loading, setLoading] = useState(true);

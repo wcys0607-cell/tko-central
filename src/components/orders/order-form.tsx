@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -31,7 +31,7 @@ interface OrderFormProps {
 }
 
 export default function OrderForm({ existingOrder }: OrderFormProps) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const { driverProfile } = useAuth();
 

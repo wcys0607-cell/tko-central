@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ interface SyncStatus {
 }
 
 export function BukkuConnectionTab() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [baseUrl, setBaseUrl] = useState("");
   const [token, setToken] = useState("");
   const [subdomain, setSubdomain] = useState("");

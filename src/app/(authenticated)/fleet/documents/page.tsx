@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Vehicle, FleetDocument } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ function cellEmoji(doc: FleetDocument | undefined): string {
 }
 
 export default function DocumentTrackerPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [documents, setDocuments] = useState<FleetDocument[]>([]);
   const [loading, setLoading] = useState(true);

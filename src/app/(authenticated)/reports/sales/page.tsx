@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,7 @@ interface SalesRow {
 }
 
 export default function SalesReportPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const now = new Date();
   const [fromDate, setFromDate] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`

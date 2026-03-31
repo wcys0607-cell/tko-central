@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Table,
@@ -66,7 +66,7 @@ export function UserManagementTab() {
   const [form, setForm] = useState<UserForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   async function loadDrivers() {
     const { data } = await supabase

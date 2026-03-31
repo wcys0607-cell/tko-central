@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Order } from "@/lib/types";
@@ -43,7 +43,7 @@ const BUKKU_COLORS: Record<string, string> = {
 };
 
 export default function OrdersPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
   const [orders, setOrders] = useState<Order[]>([]);

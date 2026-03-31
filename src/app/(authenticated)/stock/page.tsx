@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { StockLocation } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -83,7 +83,7 @@ function FillBar({ location }: { location: StockLocation }) {
 }
 
 export default function StockDashboardPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [companyWac, setCompanyWac] = useState<WAC | null>(null);
   const [partnerWac, setPartnerWac] = useState<WAC | null>(null);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Customer } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -44,7 +44,7 @@ const EMPTY_FORM = {
 };
 
 export default function CustomersPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [filtered, setFiltered] = useState<Customer[]>([]);
   const [search, setSearch] = useState("");

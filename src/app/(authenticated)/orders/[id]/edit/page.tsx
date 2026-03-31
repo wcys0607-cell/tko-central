@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Order } from "@/lib/types";
@@ -8,7 +8,7 @@ import OrderForm from "@/components/orders/order-form";
 
 export default function EditOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);

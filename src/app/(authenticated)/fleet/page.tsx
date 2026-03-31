@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Vehicle, Driver } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,7 +32,7 @@ const VEHICLE_TYPES = [
 ];
 
 export default function FleetPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [vehicles, setVehicles] = useState<(Vehicle & { assigned_driver?: string })[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);

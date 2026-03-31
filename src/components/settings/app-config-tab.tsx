@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Table,
@@ -40,7 +40,7 @@ export function AppConfigTab() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   async function loadConfigs() {
     setLoadError("");

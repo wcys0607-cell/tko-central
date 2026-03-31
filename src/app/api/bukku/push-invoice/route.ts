@@ -9,6 +9,16 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { data: driver } = await supabase
+    .from("drivers")
+    .select("role")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  if (!driver || !["admin", "manager"].includes(driver.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { orderId } = await req.json();
   if (!orderId) return NextResponse.json({ error: "orderId required" }, { status: 400 });
 

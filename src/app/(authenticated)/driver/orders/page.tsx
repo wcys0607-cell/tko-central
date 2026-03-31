@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { Order } from "@/lib/types";
@@ -20,7 +20,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function DriverOrdersPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { driverProfile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);

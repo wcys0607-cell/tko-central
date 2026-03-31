@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { Order } from "@/lib/types";
@@ -30,7 +30,7 @@ function getMonthOptions(): { value: string; label: string }[] {
 }
 
 export default function DriverWagesPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { driverProfile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);

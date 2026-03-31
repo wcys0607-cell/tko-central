@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { Vehicle } from "@/lib/types";
@@ -20,7 +20,7 @@ const CHECKLIST_ITEMS = [
 ] as const;
 
 export default function DriverChecklistPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { driverProfile } = useAuth();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<string>("");

@@ -13,6 +13,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Verify the user has a valid driver record
+  const { data: driverRecord } = await supabase
+    .from("drivers")
+    .select("id")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  if (!driverRecord) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const body = await req.json();
   const {
     vehicleId,

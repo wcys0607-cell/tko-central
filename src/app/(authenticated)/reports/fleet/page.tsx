@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ interface VehicleCost {
 }
 
 export default function FleetReportPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [renewals, setRenewals] = useState<Renewal[]>([]);
   const [costs, setCosts] = useState<VehicleCost[]>([]);
   const [loading, setLoading] = useState(true);

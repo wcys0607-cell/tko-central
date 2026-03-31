@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, use } from "react";
+import { useEffect, useState, useCallback, use, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Customer, CustomerAddress } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,7 +47,7 @@ export default function CustomerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [orderCount, setOrderCount] = useState(0);

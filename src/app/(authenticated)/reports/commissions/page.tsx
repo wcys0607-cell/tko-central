@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,7 @@ function getMonthOptions() {
 }
 
 export default function CommissionsReportPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const monthOptions = getMonthOptions();
   const [month, setMonth] = useState(monthOptions[0].value);
   const [data, setData] = useState<AgentCommission[]>([]);
