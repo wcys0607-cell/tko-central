@@ -98,7 +98,7 @@ export async function bukkuFetchAll<T>(
   while (true) {
     const res = await bukkuFetch<Record<string, unknown>>(config, {
       path,
-      params: { ...params, page, limit },
+      params: { ...params, page, per_page: limit, limit },
     });
 
     if (!res.ok) {
@@ -108,9 +108,15 @@ export async function bukkuFetchAll<T>(
     const items = (res.data?.[dataKey] as T[]) ?? [];
     allData.push(...items);
 
-    // Check if there are more pages
-    const meta = res.data?.["meta"] as { last_page?: number } | undefined;
-    if (!meta?.last_page || page >= meta.last_page) break;
+    // If no items returned, we've reached the end
+    if (items.length === 0) break;
+
+    // Check pagination meta (Laravel-style: meta.last_page or top-level last_page)
+    const meta = res.data?.["meta"] as { last_page?: number; current_page?: number; total?: number } | undefined;
+    const lastPage = meta?.last_page ?? (res.data?.["last_page"] as number | undefined);
+    const currentPage = meta?.current_page ?? (res.data?.["current_page"] as number | undefined) ?? page;
+
+    if (!lastPage || currentPage >= lastPage) break;
     page++;
   }
 
