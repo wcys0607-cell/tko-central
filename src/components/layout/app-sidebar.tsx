@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Fuel } from "lucide-react";
+import Image from "next/image";
 import { useAuth } from "@/components/providers/auth-provider";
 import { NAV_ITEMS } from "./sidebar-nav-items";
 import {
@@ -40,12 +40,16 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <Link href="/" className="flex items-center gap-3">
-          <div className="rounded-lg bg-[#E8A020] p-1.5">
-            <Fuel className="h-5 w-5 text-[#1A3A5C]" />
-          </div>
+          <Image
+            src="/logo.jpeg"
+            alt="Top Kim Oil"
+            width={32}
+            height={32}
+            className="rounded-md object-contain"
+          />
           <div>
             <h1 className="text-sm font-bold leading-tight">
-              TKO Operations Hub
+              TKO Central
             </h1>
             <p className="text-xs text-sidebar-foreground/60">
               Top Kim Oil

@@ -13,10 +13,11 @@ export interface DriverProfile {
 
 export const ROUTE_ACCESS: Record<string, UserRole[]> = {
   "/dashboard": ["admin", "manager"],
+  "/customers": ["admin", "manager", "office"],
   "/orders": ["admin", "manager", "office"],
   "/stock": ["admin", "manager", "office"],
   "/fleet": ["admin", "manager"],
-  "/driver": ["driver"],
+  "/driver": ["admin", "manager", "driver"],
   "/reports": ["admin", "manager"],
   "/bukku": ["admin"],
   "/settings": ["admin"],
@@ -57,6 +58,6 @@ export function canAccessRoute(role: UserRole, pathname: string): boolean {
       return roles.includes(role);
     }
   }
-  // No matching route = allow (e.g. /api routes)
-  return true;
+  // No matching route = deny by default
+  return false;
 }

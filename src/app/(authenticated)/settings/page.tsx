@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Settings } from "lucide-react";
 import { AppConfigTab } from "@/components/settings/app-config-tab";
 import { UserManagementTab } from "@/components/settings/user-management-tab";
+import { BukkuConnectionTab } from "@/components/settings/bukku-connection-tab";
 
 export default function SettingsPage() {
   return (
@@ -24,6 +25,7 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="config">App Configuration</TabsTrigger>
           <TabsTrigger value="users">User Management</TabsTrigger>
+          <TabsTrigger value="bukku">Bukku Connection</TabsTrigger>
         </TabsList>
 
         <TabsContent value="config" className="mt-4">
@@ -32,6 +34,10 @@ export default function SettingsPage() {
 
         <TabsContent value="users" className="mt-4">
           <UserManagementTab />
+        </TabsContent>
+
+        <TabsContent value="bukku" className="mt-4">
+          <BukkuConnectionTab />
         </TabsContent>
       </Tabs>
     </div>

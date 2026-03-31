@@ -29,21 +29,30 @@ interface ConfigEntry {
   description: string | null;
 }
 
+const SENSITIVE_KEYWORDS = ["TOKEN", "API", "KEY", "SECRET", "PASSWORD"];
+
 export function AppConfigTab() {
   const [configs, setConfigs] = useState<ConfigEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
   const supabase = createClient();
 
   async function loadConfigs() {
-    const { data } = await supabase
+    setLoadError("");
+    const { data, error } = await supabase
       .from("app_config")
       .select("*")
       .order("key");
-    if (data) setConfigs(data);
+    if (error) {
+      setLoadError(error.message);
+    } else if (data) {
+      setConfigs(data);
+    }
     setLoading(false);
   }
 
@@ -52,7 +61,8 @@ export function AppConfigTab() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function isSensitive(key: string) {
-    return key.includes("TOKEN") || key.includes("API") || key.includes("KEY");
+    const upper = key.toUpperCase();
+    return SENSITIVE_KEYWORDS.some((kw) => upper.includes(kw));
   }
 
   function toggleReveal(key: string) {
@@ -75,17 +85,30 @@ export function AppConfigTab() {
   async function handleSave() {
     if (!editingKey) return;
     setSaving(true);
-    await supabase
+    setSaveError("");
+    const { error } = await supabase
       .from("app_config")
       .update({ value: editValue })
       .eq("key", editingKey);
     setSaving(false);
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
     setEditingKey(null);
     loadConfigs();
   }
 
   if (loading) {
     return <p className="text-muted-foreground">Loading configuration...</p>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="text-sm text-red-600 bg-red-50 p-4 rounded">
+        Failed to load config: {loadError}
+      </div>
+    );
   }
 
   return (
@@ -140,6 +163,7 @@ export function AppConfigTab() {
                       onClick={() => {
                         setEditingKey(entry.key);
                         setEditValue(entry.value ?? "");
+                        setSaveError("");
                       }}
                     >
                       <Pencil className="h-4 w-4" />
@@ -168,6 +192,9 @@ export function AppConfigTab() {
             onChange={(e) => setEditValue(e.target.value)}
             placeholder="Enter value"
           />
+          {saveError && (
+            <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{saveError}</p>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingKey(null)}>
               Cancel

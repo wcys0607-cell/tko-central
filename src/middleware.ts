@@ -1,33 +1,34 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
-import { ROUTE_ACCESS, type UserRole } from "@/lib/auth";
+import { ROUTE_ACCESS, getRoleRedirectPath, type UserRole } from "@/lib/auth";
 
 // Routes that don't require auth
 const PUBLIC_ROUTES = ["/login"];
+// Routes handled by Next.js / API — skip role check
+const SKIP_ROUTES = ["/api/", "/_next/", "/favicon"];
 
 export async function middleware(request: NextRequest) {
   const { supabase, user, response } = await updateSession(request);
   const { pathname } = request.nextUrl;
 
+  // Skip API routes and static assets
+  if (SKIP_ROUTES.some((r) => pathname.startsWith(r))) {
+    return response;
+  }
+
   // Public routes — allow through
   if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
     if (user) {
-      // Logged-in user visiting /login → redirect to their role page
       const { data: driver } = await supabase
         .from("drivers")
-        .select("role")
+        .select("role, is_active")
         .eq("auth_user_id", user.id)
         .single();
 
-      if (driver?.role) {
-        const redirectMap: Record<string, string> = {
-          admin: "/dashboard",
-          manager: "/dashboard",
-          office: "/orders",
-          driver: "/driver",
-        };
-        const dest = redirectMap[driver.role] || "/dashboard";
-        return NextResponse.redirect(new URL(dest, request.url));
+      if (driver?.role && driver.is_active) {
+        return NextResponse.redirect(
+          new URL(getRoleRedirectPath(driver.role as UserRole), request.url)
+        );
       }
     }
     return response;
@@ -38,37 +39,42 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // Check role-based access
+  // Fetch driver profile with is_active check
   const { data: driver } = await supabase
     .from("drivers")
-    .select("role")
+    .select("role, is_active")
     .eq("auth_user_id", user.id)
     .single();
 
   if (!driver?.role) {
-    // No driver profile — redirect to login
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  // Block deactivated users
+  if (!driver.is_active) {
+    // Sign them out and redirect to login
+    await supabase.auth.signOut();
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
   const role = driver.role as UserRole;
+  const defaultPath = getRoleRedirectPath(role);
 
-  // Check if role can access this path
+  // Default-deny: check if route is in ROUTE_ACCESS
+  let routeMatched = false;
   for (const [route, roles] of Object.entries(ROUTE_ACCESS)) {
     if (pathname === route || pathname.startsWith(route + "/")) {
+      routeMatched = true;
       if (!roles.includes(role)) {
-        // Redirect to default page for their role
-        const redirectMap: Record<string, string> = {
-          admin: "/dashboard",
-          manager: "/dashboard",
-          office: "/orders",
-          driver: "/driver",
-        };
-        return NextResponse.redirect(
-          new URL(redirectMap[role] || "/dashboard", request.url)
-        );
+        return NextResponse.redirect(new URL(defaultPath, request.url));
       }
       break;
     }
+  }
+
+  // If no route matched in ROUTE_ACCESS, deny access (default-deny)
+  if (!routeMatched && pathname !== "/") {
+    return NextResponse.redirect(new URL(defaultPath, request.url));
   }
 
   return response;
@@ -76,6 +82,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|logo.jpeg|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

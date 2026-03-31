@@ -7,6 +7,7 @@ import {
   FileBarChart,
   RefreshCw,
   Settings,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/lib/auth";
@@ -24,6 +25,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: LayoutDashboard,
     href: "/dashboard",
     roles: ["admin", "manager"],
+  },
+  {
+    label: "Customers",
+    icon: Users,
+    href: "/customers",
+    roles: ["admin", "manager", "office"],
   },
   {
     label: "Orders",

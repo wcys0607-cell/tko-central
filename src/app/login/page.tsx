@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Fuel } from "lucide-react";
+import Image from "next/image";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -42,16 +42,25 @@ export default function LoginPage() {
     if (data.user) {
       const { data: driver } = await supabase
         .from("drivers")
-        .select("role")
+        .select("role, is_active")
         .eq("auth_user_id", data.user.id)
         .single();
 
-      if (driver?.role) {
-        router.push(getRoleRedirectPath(driver.role as UserRole));
-      } else {
+      if (!driver?.role) {
         setError("No driver profile found. Contact admin.");
         setLoading(false);
+        return;
       }
+
+      if (!driver.is_active) {
+        setError("Your account has been deactivated. Contact admin.");
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
+
+      router.push(getRoleRedirectPath(driver.role as UserRole));
+      router.refresh();
     }
   }
 
@@ -59,14 +68,18 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto flex items-center justify-center gap-2">
-            <div className="rounded-lg bg-[#1A3A5C] p-2">
-              <Fuel className="h-6 w-6 text-[#E8A020]" />
-            </div>
+          <div className="mx-auto flex items-center justify-center">
+            <Image
+              src="/logo.jpeg"
+              alt="Top Kim Oil"
+              width={80}
+              height={80}
+              className="rounded-lg object-contain"
+            />
           </div>
           <div>
             <CardTitle className="text-2xl font-bold text-[#1A3A5C]">
-              TKO Operations Hub
+              TKO Central
             </CardTitle>
             <CardDescription>
               Top Kim Oil Sdn. Bhd.
