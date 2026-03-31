@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -64,7 +64,8 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const supabase = createClient();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const supabase = useMemo(() => createClient(), []);
 
   const [todayCount, setTodayCount] = useState(0);
   const [todayLiters, setTodayLiters] = useState(0);
@@ -89,16 +90,17 @@ export default function DashboardPage() {
     // Fetch each section independently and in parallel — one failure won't block others
     // KPI: Today's orders
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("orders")
         .select("quantity_liters, total_sale")
         .eq("order_date", today)
         .neq("status", "cancelled");
+      if (error) { console.error("Dashboard: today orders error", error); }
       const orders = data ?? [];
       setTodayCount(orders.length);
       setTodayLiters(orders.reduce((s: number, o: { quantity_liters: number | null }) => s + (o.quantity_liters ?? 0), 0));
       setTodayRevenue(orders.reduce((s: number, o: { total_sale: number | null }) => s + (o.total_sale ?? 0), 0));
-    } catch (e) { console.error("Dashboard: today orders", e); }
+    } catch (e) { console.error("Dashboard: today orders exception", e); }
 
     // KPI: Pending
     try {
