@@ -40,6 +40,12 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [savedAddresses, setSavedAddresses] = useState<string[]>([]);
+  const [customerSearch, setCustomerSearch] = useState(
+    existingOrder?.customer_id
+      ? "" // will be set after customers load
+      : ""
+  );
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -81,6 +87,12 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
         from += 1000;
       }
       setCustomers(allCustomers);
+
+      // Set customer search text for existing orders
+      if (existingOrder?.customer_id) {
+        const match = allCustomers.find((c) => c.id === existingOrder.customer_id);
+        if (match) setCustomerSearch(match.short_name || match.name);
+      }
 
       const [p, d, v] = await Promise.all([
         supabase.from("products").select("id,name,unit,default_price,sst_rate").eq("is_active", true).order("name"),
@@ -258,24 +270,55 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
                 </div>
               </div>
 
-              <div>
+              <div className="relative">
                 <label className="text-sm font-medium">Customer *</label>
-                <Select
-                  value={form.customer_id || "_none"}
-                  onValueChange={(v) => {
-                    if (v && v !== "_none") {
-                      setForm({ ...form, customer_id: v, destination: "" });
-                      loadAddresses(v);
+                <Input
+                  value={customerSearch}
+                  onChange={(e) => {
+                    setCustomerSearch(e.target.value);
+                    setShowCustomerDropdown(true);
+                    if (!e.target.value) {
+                      setForm({ ...form, customer_id: "", destination: "" });
                     }
                   }}
-                >
-                  <SelectTrigger><SelectValue placeholder="Select customer..." /></SelectTrigger>
-                  <SelectContent>
-                    {customers.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onFocus={() => setShowCustomerDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                  placeholder="Type to search customer..."
+                  autoComplete="off"
+                />
+                {showCustomerDropdown && customerSearch.length > 0 && (
+                  <div className="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto rounded-md border bg-popover shadow-md">
+                    {customers
+                      .filter((c) => {
+                        const q = customerSearch.toLowerCase();
+                        return c.name.toLowerCase().includes(q) ||
+                          (c.short_name && c.short_name.toLowerCase().includes(q));
+                      })
+                      .slice(0, 50)
+                      .map((c) => (
+                        <div
+                          key={c.id}
+                          className={`px-3 py-2 text-sm cursor-pointer hover:bg-accent ${form.customer_id === c.id ? "bg-accent font-medium" : ""}`}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setForm({ ...form, customer_id: c.id, destination: "" });
+                            setCustomerSearch(c.short_name || c.name);
+                            setShowCustomerDropdown(false);
+                            loadAddresses(c.id);
+                          }}
+                        >
+                          {c.name}
+                          {c.short_name && <span className="ml-2 text-xs text-muted-foreground">({c.short_name})</span>}
+                        </div>
+                      ))}
+                    {customers.filter((c) => {
+                      const q = customerSearch.toLowerCase();
+                      return c.name.toLowerCase().includes(q) || (c.short_name && c.short_name.toLowerCase().includes(q));
+                    }).length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No customer found</div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
