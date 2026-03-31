@@ -95,7 +95,7 @@ export default function OrdersPage() {
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[#1A3A5C]">Orders</h1>
@@ -161,20 +161,20 @@ export default function OrdersPage() {
       </div>
 
       {/* Table */}
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
+      <div className="border rounded-lg overflow-x-auto">
+        <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow className="bg-gray-50">
-              <TableHead>Date</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Destination</TableHead>
-              <TableHead className="text-right">Qty (L)</TableHead>
-              <TableHead className="text-right">Unit Price</TableHead>
-              <TableHead className="text-right">Total (RM)</TableHead>
-              <TableHead>Driver</TableHead>
-              <TableHead>Truck</TableHead>
-              <TableHead className="text-center">Status</TableHead>
-              <TableHead className="text-center">Bukku</TableHead>
+              <TableHead className="w-[80px]">Date</TableHead>
+              <TableHead className="min-w-[120px]">Customer</TableHead>
+              <TableHead className="min-w-[100px]">Destination</TableHead>
+              <TableHead className="text-right w-[70px]">Qty (L)</TableHead>
+              <TableHead className="text-right w-[70px]">Price</TableHead>
+              <TableHead className="text-right w-[80px]">Total</TableHead>
+              <TableHead className="w-[80px]">Driver</TableHead>
+              <TableHead className="w-[70px]">Truck</TableHead>
+              <TableHead className="text-center w-[75px]">Status</TableHead>
+              <TableHead className="text-center w-[65px]">Bukku</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -200,17 +200,13 @@ export default function OrdersPage() {
                   <TableCell className="text-sm font-medium whitespace-nowrap">
                     {o.order_date ? format(new Date(o.order_date + "T00:00:00"), "d MMM yy") : "—"}
                   </TableCell>
-                  <TableCell>
-                    <div className="text-sm font-medium">
-                      {(o.customer as { name: string } | null)?.name ?? "—"}
+                  <TableCell className="max-w-[180px]">
+                    <div className="text-sm font-medium truncate">
+                      {(o.customer as { short_name?: string | null } | null)?.short_name ||
+                       ((o.customer as { name: string } | null)?.name ?? "—")}
                     </div>
-                    {(o.customer as { short_name?: string | null } | null)?.short_name && (
-                      <div className="text-xs text-muted-foreground">
-                        {(o.customer as { short_name: string }).short_name}
-                      </div>
-                    )}
                   </TableCell>
-                  <TableCell className="text-sm max-w-[140px] truncate">{o.destination ?? "—"}</TableCell>
+                  <TableCell className="text-sm max-w-[120px] truncate">{o.destination ?? "—"}</TableCell>
                   <TableCell className="text-right text-sm">
                     {o.quantity_liters?.toLocaleString() ?? "—"}
                   </TableCell>
