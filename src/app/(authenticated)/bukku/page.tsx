@@ -62,8 +62,18 @@ export default function BukkuPage() {
   const [syncing, setSyncing] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [custRes, prodRes, ordRes, logRes] = await Promise.all([
-      supabase.from("customers").select("*").eq("is_active", true).order("name"),
+    // Fetch customers with pagination (Supabase default limit is 1000)
+    const allCust: Customer[] = [];
+    let custFrom = 0;
+    while (true) {
+      const { data } = await supabase.from("customers").select("*").eq("is_active", true).order("name").range(custFrom, custFrom + 999);
+      const rows = (data ?? []) as Customer[];
+      allCust.push(...rows);
+      if (rows.length < 1000) break;
+      custFrom += 1000;
+    }
+
+    const [prodRes, ordRes, logRes] = await Promise.all([
       supabase.from("products").select("*").eq("is_active", true).order("name"),
       supabase
         .from("orders")
@@ -79,7 +89,7 @@ export default function BukkuPage() {
         .limit(50),
     ]);
 
-    if (custRes.data) setCustomers(custRes.data);
+    setCustomers(allCust);
     if (prodRes.data) setProducts(prodRes.data);
     if (ordRes.data) setOrders(ordRes.data as Order[]);
     if (logRes.data) setSyncLogs(logRes.data as SyncLog[]);

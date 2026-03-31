@@ -70,13 +70,23 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
 
   useEffect(() => {
     async function loadDropdowns() {
-      const [c, p, d, v] = await Promise.all([
-        supabase.from("customers").select("id,name,short_name").eq("is_active", true).order("name"),
+      // Fetch customers with pagination (Supabase default limit is 1000)
+      const allCustomers: Customer[] = [];
+      let from = 0;
+      while (true) {
+        const { data } = await supabase.from("customers").select("id,name,short_name").eq("is_active", true).order("name").range(from, from + 999);
+        const rows = (data ?? []) as Customer[];
+        allCustomers.push(...rows);
+        if (rows.length < 1000) break;
+        from += 1000;
+      }
+      setCustomers(allCustomers);
+
+      const [p, d, v] = await Promise.all([
         supabase.from("products").select("id,name,unit,default_price,sst_rate").eq("is_active", true).order("name"),
         supabase.from("drivers").select("id,name,role").eq("is_active", true).order("name"),
         supabase.from("vehicles").select("id,plate_number,type").eq("is_active", true).order("plate_number"),
       ]);
-      setCustomers((c.data as Customer[]) ?? []);
       setProducts((p.data as Product[]) ?? []);
       setDrivers((d.data as Driver[]) ?? []);
       setVehicles((v.data as Vehicle[]) ?? []);

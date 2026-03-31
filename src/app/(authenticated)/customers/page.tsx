@@ -57,11 +57,22 @@ export default function CustomersPage() {
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("customers")
-      .select("*, middle_man:middle_man_id(id, name)")
-      .order("name");
-    setCustomers((data as Customer[]) ?? []);
+    // Supabase default limit is 1000 — fetch all with range
+    const all: Customer[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data } = await supabase
+        .from("customers")
+        .select("*, middle_man:middle_man_id(id, name)")
+        .order("name")
+        .range(from, from + pageSize - 1);
+      const rows = (data ?? []) as Customer[];
+      all.push(...rows);
+      if (rows.length < pageSize) break;
+      from += pageSize;
+    }
+    setCustomers(all);
     setLoading(false);
   }, [supabase]);
 

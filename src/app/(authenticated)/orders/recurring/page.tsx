@@ -56,12 +56,20 @@ export default function RecurringRulesPage() {
 
   const fetchRules = useCallback(async () => {
     setLoading(true);
-    const [r, c] = await Promise.all([
-      supabase.from("recurring_rules").select("*, customer:customer_id(id,name)").order("trigger_day"),
-      supabase.from("customers").select("id,name").eq("is_active", true).order("name"),
-    ]);
-    setRules((r.data as RecurringRule[]) ?? []);
-    setCustomers((c.data as Customer[]) ?? []);
+    const { data: rulesData } = await supabase.from("recurring_rules").select("*, customer:customer_id(id,name)").order("trigger_day");
+    setRules((rulesData as RecurringRule[]) ?? []);
+
+    // Fetch all customers with pagination (Supabase default limit is 1000)
+    const allCust: Customer[] = [];
+    let from = 0;
+    while (true) {
+      const { data } = await supabase.from("customers").select("id,name").eq("is_active", true).order("name").range(from, from + 999);
+      const rows = (data ?? []) as Customer[];
+      allCust.push(...rows);
+      if (rows.length < 1000) break;
+      from += 1000;
+    }
+    setCustomers(allCust);
     setLoading(false);
   }, [supabase]);
 
