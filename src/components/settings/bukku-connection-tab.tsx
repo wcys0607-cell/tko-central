@@ -18,6 +18,7 @@ export function BukkuConnectionTab() {
   const supabase = createClient();
   const [baseUrl, setBaseUrl] = useState("");
   const [token, setToken] = useState("");
+  const [subdomain, setSubdomain] = useState("");
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<"unknown" | "ok" | "failed">("unknown");
@@ -32,11 +33,12 @@ export function BukkuConnectionTab() {
     const { data } = await supabase
       .from("app_config")
       .select("key, value")
-      .in("key", ["BUKKU_BASE_URL", "BUKKU_API_TOKEN"]);
+      .in("key", ["BUKKU_BASE_URL", "BUKKU_API_TOKEN", "BUKKU_SUBDOMAIN"]);
 
     for (const row of data ?? []) {
       if (row.key === "BUKKU_BASE_URL") setBaseUrl(row.value ?? "");
       if (row.key === "BUKKU_API_TOKEN") setToken(row.value ?? "");
+      if (row.key === "BUKKU_SUBDOMAIN") setSubdomain(row.value ?? "");
     }
 
     // Load last sync timestamps from notifications_log
@@ -73,6 +75,7 @@ export function BukkuConnectionTab() {
     for (const [key, value] of [
       ["BUKKU_BASE_URL", baseUrl],
       ["BUKKU_API_TOKEN", token],
+      ["BUKKU_SUBDOMAIN", subdomain],
     ]) {
       await supabase
         .from("app_config")
@@ -155,8 +158,17 @@ export function BukkuConnectionTab() {
             <Input
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="https://topkimoil.bukku.my/api"
+              placeholder="https://api.bukku.my"
             />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Company Subdomain</label>
+            <Input
+              value={subdomain}
+              onChange={(e) => setSubdomain(e.target.value)}
+              placeholder="topkimoil"
+            />
+            <p className="text-xs text-muted-foreground">Your Bukku subdomain (e.g. &quot;topkimoil&quot; from topkimoil.bukku.my)</p>
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">API Token</label>

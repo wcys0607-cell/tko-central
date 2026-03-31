@@ -3,16 +3,12 @@ import { getBukkuConfig, bukkuFetch } from "./client";
 
 interface BukkuInvoice {
   id: number;
-  invoice_number?: string;
+  number?: string;
   status?: string;
-  total?: number;
-  balance_due?: number;
+  amount?: number;
+  balance?: number;
   date?: string;
-  due_date?: string;
-}
-
-interface BukkuInvoiceResponse {
-  data: BukkuInvoice;
+  term_items?: { date: string; amount: number; balance: number }[];
 }
 
 interface InvoiceSyncResult {
@@ -48,7 +44,7 @@ export async function syncInvoiceStatus(): Promise<InvoiceSyncResult> {
   const today = new Date();
 
   for (const order of orders) {
-    const res = await bukkuFetch<BukkuInvoiceResponse>(config, {
+    const res = await bukkuFetch<{ transaction: BukkuInvoice }>(config, {
       path: `/sales/invoices/${order.bukku_invoice_id}`,
     });
 
@@ -58,7 +54,8 @@ export async function syncInvoiceStatus(): Promise<InvoiceSyncResult> {
       continue;
     }
 
-    const invoice = res.data?.data;
+    // Bukku returns single invoice as { transaction: {...} }
+    const invoice = res.data?.transaction;
     if (!invoice) {
       result.failed++;
       continue;
@@ -66,16 +63,17 @@ export async function syncInvoiceStatus(): Promise<InvoiceSyncResult> {
 
     // Determine payment status
     let paymentStatus: string;
-    const balanceDue = invoice.balance_due ?? invoice.total ?? 0;
-    const total = invoice.total ?? 0;
+    const balanceDue = invoice.balance ?? invoice.amount ?? 0;
+    const total = invoice.amount ?? 0;
 
     if (balanceDue <= 0) {
       paymentStatus = "paid";
     } else if (balanceDue < total) {
       paymentStatus = "partial";
     } else {
-      // Check if overdue
-      const dueDate = invoice.due_date ? new Date(invoice.due_date) : null;
+      // Check if overdue — due date from term_items or invoice date
+      const dueDateStr = invoice.term_items?.[0]?.date ?? invoice.date;
+      const dueDate = dueDateStr ? new Date(dueDateStr) : null;
       if (dueDate && dueDate < today) {
         paymentStatus = "overdue";
         result.overdue++;
@@ -164,7 +162,7 @@ export async function createBukkuInvoice(orderId: string): Promise<CreateInvoice
     ],
   };
 
-  const res = await bukkuFetch<{ data: { id: number; invoice_number?: string } }>(config, {
+  const res = await bukkuFetch<{ transaction: { id: number; number?: string } }>(config, {
     method: "POST",
     path: "/sales/invoices",
     body: payload,
@@ -178,7 +176,7 @@ export async function createBukkuInvoice(orderId: string): Promise<CreateInvoice
     return { ok: false, error: res.error };
   }
 
-  const invoiceId = res.data?.data?.id;
+  const invoiceId = res.data?.transaction?.id;
   if (!invoiceId) {
     return { ok: false, error: "No invoice ID returned" };
   }

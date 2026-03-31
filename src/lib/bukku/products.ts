@@ -4,8 +4,13 @@ import { getBukkuConfig, bukkuFetchAll } from "./client";
 interface BukkuProduct {
   id: number;
   name: string;
-  code?: string;
-  unit_price?: number;
+  sku?: string;
+  sale_price?: number;
+  purchase_price?: number;
+  type?: string;
+  is_selling?: boolean;
+  is_buying?: boolean;
+  is_archived?: boolean;
   classification_code?: string;
 }
 
@@ -28,7 +33,7 @@ export async function syncBukkuProducts(): Promise<SyncResult> {
   );
 
   // Fetch all products from Bukku
-  const bukkuRes = await bukkuFetchAll<BukkuProduct>(config, "/products", "data");
+  const bukkuRes = await bukkuFetchAll<BukkuProduct>(config, "/products", "products");
   if (!bukkuRes.ok) {
     return { matched: 0, created: 0, failed: 0, errors: [bukkuRes.error ?? "Failed to fetch products"] };
   }
@@ -84,7 +89,7 @@ export async function syncBukkuProducts(): Promise<SyncResult> {
       // Create new product from Bukku data
       const { error } = await supabase.from("products").insert({
         name: productName,
-        default_price: product.unit_price ?? null,
+        default_price: product.sale_price ?? null,
         classification_code: product.classification_code ?? null,
         bukku_product_id: product.id,
         is_active: true,

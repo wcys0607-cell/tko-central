@@ -1,44 +1,56 @@
 import { createClient } from "@supabase/supabase-js";
 import { getBukkuConfig, bukkuFetchAll } from "./client";
 
+/** Actual Bukku contact shape from their API */
 interface BukkuContact {
   id: number;
-  name: string;
-  company_name?: string;
-  email?: string;
-  phone?: string;
-  fax?: string;
-  website?: string;
-  tax_number?: string;
-  registration_number?: string;
-  address?: string;
-  billing_address?: string;
-  delivery_address?: string;
-  shipping_address?: string;
-  addresses?: { address?: string; type?: string }[];
-  contact_person?: string;
-  contact_person_phone?: string;
-  contact_person_email?: string;
-  payment_terms?: number;
-  credit_limit?: number;
-  bank_name?: string;
-  bank_account?: string;
-  notes?: string;
-  type?: string;
-  [key: string]: unknown; // capture any other fields
+  legal_name: string | null;
+  other_name: string | null;
+  display_name: string | null;
+  company_name: string | null;
+  types: string[]; // ["customer"], ["supplier"], ["customer","supplier"]
+  email: string | null;
+  phone_no: string | null;
+  billing_party: string | null; // full billing address
+  shipping_party: string | null; // full shipping address
+  billing_first_name: string | null;
+  billing_last_name: string | null;
+  shipping_first_name: string | null;
+  shipping_last_name: string | null;
+  reg_no: string | null; // SSM registration number
+  old_reg_no: string | null;
+  tax_id_no: string | null; // TIN number
+  sst_reg_no: string | null;
+  reg_no_type: string | null;
+  entity_type: string | null;
+  group_names: string | null;
+  receivable_amount: number | null;
+  payable_amount: number | null;
+  net_receivable_amount: number | null;
+  field_4: string | null; // custom field (bank info in TKO)
+  emails: string | null;
+  mandate: string | null;
+  is_archived: boolean;
+  is_myinvois_ready: number | null;
+  is_myinvois_validated: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+  [key: string]: unknown;
 }
 
 interface SyncResult {
   matched: number;
   created: number;
+  skipped: number;
   failed: number;
+  total_fetched: number;
   errors: string[];
 }
 
 export async function syncBukkuContacts(): Promise<SyncResult> {
   const config = await getBukkuConfig();
   if (!config) {
-    return { matched: 0, created: 0, failed: 0, errors: ["Bukku not configured"] };
+    return { matched: 0, created: 0, skipped: 0, failed: 0, total_fetched: 0, errors: ["Bukku not configured. Set BUKKU_BASE_URL, BUKKU_API_TOKEN, and BUKKU_SUBDOMAIN."] };
   }
 
   const supabase = createClient(
@@ -46,56 +58,67 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // Fetch all contacts from Bukku
-  const bukkuRes = await bukkuFetchAll<BukkuContact>(config, "/contacts", "data");
+  // Fetch ALL contacts from Bukku (data key is "contacts")
+  const bukkuRes = await bukkuFetchAll<BukkuContact>(config, "/contacts", "contacts");
   if (!bukkuRes.ok) {
-    return { matched: 0, created: 0, failed: 0, errors: [bukkuRes.error ?? "Failed to fetch contacts"] };
+    return { matched: 0, created: 0, skipped: 0, failed: 0, total_fetched: 0, errors: [bukkuRes.error ?? "Failed to fetch contacts"] };
   }
 
-  const result: SyncResult = { matched: 0, created: 0, failed: 0, errors: [] };
+  const result: SyncResult = { matched: 0, created: 0, skipped: 0, failed: 0, total_fetched: bukkuRes.data.length, errors: [] };
 
   // Get all existing customers
   const { data: customers } = await supabase
     .from("customers")
-    .select("id, name, bukku_contact_id, tin_number")
+    .select("id, name, bukku_contact_id")
     .order("name");
 
-  const customersByName = new Map<string, { id: string; tin_number: string | null }>();
-  const customersByBukkuId = new Map<number, string>(); // bukku_id -> customer id
+  const customersByName = new Map<string, string>(); // name -> id
+  const customersByBukkuId = new Map<number, string>(); // bukku_id -> id
 
   for (const c of customers ?? []) {
-    customersByName.set(c.name.toLowerCase().trim(), { id: c.id, tin_number: c.tin_number });
+    customersByName.set(c.name.toLowerCase().trim(), c.id);
     if (c.bukku_contact_id) customersByBukkuId.set(c.bukku_contact_id, c.id);
   }
 
   for (const contact of bukkuRes.data) {
-    const contactName = (contact.company_name || contact.name || "").trim();
-    if (!contactName) continue;
+    // Only sync contacts that include "customer" type
+    if (!contact.types || !contact.types.includes("customer")) {
+      result.skipped++;
+      continue;
+    }
 
-    // Build the full update payload from Bukku (always overwrite — Bukku is source of truth)
+    const contactName = (contact.legal_name || contact.display_name || contact.company_name || "").trim();
+    if (!contactName) {
+      result.skipped++;
+      continue;
+    }
+
+    // Map Bukku fields → our DB fields
     const bukkuFields: Record<string, unknown> = {
       bukku_contact_id: contact.id,
       bukku_sync_status: "synced",
       bukku_raw: contact,
       updated_at: new Date().toISOString(),
     };
-    if (contact.tax_number) bukkuFields.tin_number = contact.tax_number;
-    if (contact.registration_number) bukkuFields.registration_number = contact.registration_number;
-    if (contact.phone) bukkuFields.phone = contact.phone;
+
+    // Contact details
+    if (contact.phone_no) bukkuFields.phone = contact.phone_no;
     if (contact.email) bukkuFields.email = contact.email;
-    if (contact.fax) bukkuFields.fax = contact.fax;
-    if (contact.website) bukkuFields.website = contact.website;
-    if (contact.address) bukkuFields.address = contact.address;
-    if (contact.billing_address) bukkuFields.billing_address = contact.billing_address;
-    if (contact.shipping_address) bukkuFields.shipping_address = contact.shipping_address;
-    if (contact.contact_person) bukkuFields.contact_person = contact.contact_person;
-    if (contact.contact_person_phone) bukkuFields.contact_person_phone = contact.contact_person_phone;
-    if (contact.contact_person_email) bukkuFields.contact_person_email = contact.contact_person_email;
-    if (contact.payment_terms) bukkuFields.payment_terms = contact.payment_terms;
-    if (contact.credit_limit) bukkuFields.credit_limit = contact.credit_limit;
-    if (contact.bank_name) bukkuFields.bank_name = contact.bank_name;
-    if (contact.bank_account) bukkuFields.bank_account = contact.bank_account;
-    if (contact.notes) bukkuFields.notes = contact.notes;
+    if (contact.tax_id_no) bukkuFields.tin_number = contact.tax_id_no;
+    if (contact.reg_no) bukkuFields.registration_number = contact.reg_no;
+    if (contact.billing_party) bukkuFields.billing_address = contact.billing_party;
+    if (contact.shipping_party) bukkuFields.shipping_address = contact.shipping_party;
+    // Use billing_party as main address if no separate address
+    if (contact.billing_party) bukkuFields.address = contact.billing_party;
+    // Bank info from custom field_4 (if present)
+    if (contact.field_4) bukkuFields.bank_account = contact.field_4;
+    // Contact person from billing name
+    const contactPerson = [contact.billing_first_name, contact.billing_last_name].filter(Boolean).join(" ");
+    if (contactPerson) bukkuFields.contact_person = contactPerson;
+    // Notes from entity type / other info
+    if (contact.other_name && contact.other_name !== contactName) {
+      bukkuFields.short_name = contact.other_name;
+    }
 
     // Check if already linked by bukku_contact_id — re-sync details
     const existingLinkedId = customersByBukkuId.get(contact.id);
@@ -116,48 +139,28 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
     }
 
     // Try to match by name (case-insensitive)
-    const existing = customersByName.get(contactName.toLowerCase());
+    const existingId = customersByName.get(contactName.toLowerCase());
 
-    if (existing) {
-      // Update existing customer with Bukku details
+    if (existingId) {
       const { error } = await supabase
         .from("customers")
         .update(bukkuFields)
-        .eq("id", existing.id);
+        .eq("id", existingId);
 
       if (error) {
         result.failed++;
         result.errors.push(`Update "${contactName}": ${error.message}`);
       } else {
         result.matched++;
-        await syncContactAddresses(supabase, existing.id, contact);
+        await syncContactAddresses(supabase, existingId, contact);
       }
     } else {
-      // Create new customer from Bukku data with all available details
+      // Create new customer from Bukku
       const { data: newCustomer, error } = await supabase
         .from("customers")
         .insert({
-          name: contactName,
-          phone: contact.phone || null,
-          email: contact.email || null,
-          address: contact.address || null,
-          tin_number: contact.tax_number || null,
-          registration_number: contact.registration_number || null,
-          billing_address: contact.billing_address || null,
-          shipping_address: contact.shipping_address || null,
-          fax: contact.fax || null,
-          website: contact.website || null,
-          contact_person: contact.contact_person || null,
-          contact_person_phone: contact.contact_person_phone || null,
-          contact_person_email: contact.contact_person_email || null,
-          payment_terms: contact.payment_terms || null,
-          credit_limit: contact.credit_limit || null,
-          bank_name: contact.bank_name || null,
-          bank_account: contact.bank_account || null,
-          notes: contact.notes || null,
-          bukku_contact_id: contact.id,
-          bukku_sync_status: "synced",
-          bukku_raw: contact,
+          name: contactName.toUpperCase(),
+          ...bukkuFields,
           is_active: true,
         })
         .select("id")
@@ -168,7 +171,6 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
         result.errors.push(`Create "${contactName}": ${error.message}`);
       } else {
         result.created++;
-        // Sync delivery addresses for new customer
         if (newCustomer) {
           await syncContactAddresses(supabase, newCustomer.id, contact);
         }
@@ -189,16 +191,8 @@ async function syncContactAddresses(
   // Collect all addresses from the Bukku contact
   const addresses: string[] = [];
 
-  if (contact.address) addresses.push(contact.address.trim());
-  if (contact.delivery_address) addresses.push(contact.delivery_address.trim());
-  if (contact.shipping_address) addresses.push(contact.shipping_address.trim());
-
-  // Some Bukku contacts may have an addresses array
-  if (contact.addresses && Array.isArray(contact.addresses)) {
-    for (const addr of contact.addresses) {
-      if (addr.address) addresses.push(addr.address.trim());
-    }
-  }
+  if (contact.billing_party) addresses.push(contact.billing_party.trim());
+  if (contact.shipping_party) addresses.push(contact.shipping_party.trim());
 
   // Deduplicate
   const unique = [...new Set(addresses.filter((a) => a.length > 0))];

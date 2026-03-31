@@ -1,8 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
-interface BukkuConfig {
+export interface BukkuConfig {
   baseUrl: string;
   token: string;
+  subdomain: string;
 }
 
 interface BukkuRequestOptions {
@@ -29,7 +30,7 @@ export async function getBukkuConfig(): Promise<BukkuConfig | null> {
   const { data } = await supabase
     .from("app_config")
     .select("key, value")
-    .in("key", ["BUKKU_BASE_URL", "BUKKU_API_TOKEN"]);
+    .in("key", ["BUKKU_BASE_URL", "BUKKU_API_TOKEN", "BUKKU_SUBDOMAIN"]);
 
   const map: Record<string, string> = {};
   for (const row of data ?? []) {
@@ -38,9 +39,10 @@ export async function getBukkuConfig(): Promise<BukkuConfig | null> {
 
   const baseUrl = map["BUKKU_BASE_URL"];
   const token = map["BUKKU_API_TOKEN"];
+  const subdomain = map["BUKKU_SUBDOMAIN"];
 
-  if (!baseUrl || !token) return null;
-  return { baseUrl: baseUrl.replace(/\/+$/, ""), token };
+  if (!baseUrl || !token || !subdomain) return null;
+  return { baseUrl: baseUrl.replace(/\/+$/, ""), token, subdomain };
 }
 
 /** Make an authenticated request to the Bukku API */
@@ -61,6 +63,7 @@ export async function bukkuFetch<T = unknown>(
       method: opts.method ?? "GET",
       headers: {
         Authorization: `Bearer ${config.token}`,
+        "Company-Subdomain": config.subdomain,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -84,7 +87,10 @@ export async function bukkuFetch<T = unknown>(
   }
 }
 
-/** Paginated GET — fetches all pages and returns combined data array */
+/**
+ * Paginated GET — fetches all pages and returns combined data array.
+ * Bukku uses { paging: { current_page, per_page, total }, [dataKey]: [...] }
+ */
 export async function bukkuFetchAll<T>(
   config: BukkuConfig,
   path: string,
@@ -93,12 +99,12 @@ export async function bukkuFetchAll<T>(
 ): Promise<{ ok: boolean; data: T[]; error?: string }> {
   const allData: T[] = [];
   let page = 1;
-  const limit = 100;
+  const perPage = 100; // max per page
 
   while (true) {
     const res = await bukkuFetch<Record<string, unknown>>(config, {
       path,
-      params: { ...params, page, per_page: limit, limit },
+      params: { ...params, page, per_page: perPage },
     });
 
     if (!res.ok) {
@@ -111,12 +117,13 @@ export async function bukkuFetchAll<T>(
     // If no items returned, we've reached the end
     if (items.length === 0) break;
 
-    // Check pagination meta (Laravel-style: meta.last_page or top-level last_page)
-    const meta = res.data?.["meta"] as { last_page?: number; current_page?: number; total?: number } | undefined;
-    const lastPage = meta?.last_page ?? (res.data?.["last_page"] as number | undefined);
-    const currentPage = meta?.current_page ?? (res.data?.["current_page"] as number | undefined) ?? page;
+    // Bukku pagination: { paging: { current_page, per_page, total } }
+    const paging = res.data?.["paging"] as { current_page?: number; per_page?: number; total?: number } | undefined;
+    const total = paging?.total ?? 0;
+    const currentPerPage = paging?.per_page ?? perPage;
+    const lastPage = Math.ceil(total / currentPerPage);
 
-    if (!lastPage || currentPage >= lastPage) break;
+    if (page >= lastPage) break;
     page++;
   }
 
@@ -126,10 +133,12 @@ export async function bukkuFetchAll<T>(
 /** Test Bukku connection by fetching 1 contact */
 export async function testBukkuConnection(
   config: BukkuConfig
-): Promise<{ ok: boolean; error?: string }> {
-  const res = await bukkuFetch(config, {
+): Promise<{ ok: boolean; error?: string; total?: number }> {
+  const res = await bukkuFetch<Record<string, unknown>>(config, {
     path: "/contacts",
-    params: { limit: 1 },
+    params: { per_page: 1 },
   });
-  return { ok: res.ok, error: res.error };
+  if (!res.ok) return { ok: false, error: res.error };
+  const paging = res.data?.["paging"] as { total?: number } | undefined;
+  return { ok: true, total: paging?.total ?? 0 };
 }
