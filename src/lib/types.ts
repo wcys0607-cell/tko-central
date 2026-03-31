@@ -233,6 +233,16 @@ export interface DriverChecklist {
   vehicle?: Pick<Vehicle, "id" | "plate_number"> | null;
 }
 
+export interface CustomerAddress {
+  id: string;
+  customer_id: string;
+  address: string;
+  label: string | null;
+  is_default: boolean;
+  source: string | null;
+  created_at: string;
+}
+
 export interface AppConfig {
   id: string;
   key: string;

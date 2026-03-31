@@ -39,6 +39,7 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [savedAddresses, setSavedAddresses] = useState<string[]>([]);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -82,6 +83,28 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
     }
     loadDropdowns();
   }, [supabase]);
+
+  // Load saved addresses when customer changes
+  async function loadAddresses(customerId: string) {
+    if (!customerId) {
+      setSavedAddresses([]);
+      return;
+    }
+    const { data } = await supabase
+      .from("customer_addresses")
+      .select("address")
+      .eq("customer_id", customerId)
+      .order("address");
+    setSavedAddresses((data ?? []).map((a: { address: string }) => a.address));
+  }
+
+  // Load addresses for existing order
+  useEffect(() => {
+    if (existingOrder?.customer_id) {
+      loadAddresses(existingOrder.customer_id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingOrder?.customer_id]);
 
   // Auto-fill unit price when product changes
   function handleProductChange(productId: string) {
@@ -164,6 +187,15 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
       return;
     }
 
+    // Auto-save new destination to customer_addresses
+    if (form.destination.trim() && form.customer_id && !savedAddresses.includes(form.destination.trim())) {
+      supabase.from("customer_addresses").insert({
+        customer_id: form.customer_id,
+        address: form.destination.trim(),
+        source: "order_entry",
+      }).then(() => {});
+    }
+
     // Send WhatsApp notifications for new orders via API route
     if (!existingOrder && orderId) {
       fetch(`/api/orders/${orderId}`, { method: "POST" }).catch(() => {});
@@ -220,7 +252,12 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
                 <label className="text-sm font-medium">Customer *</label>
                 <Select
                   value={form.customer_id || "_none"}
-                  onValueChange={(v) => v && v !== "_none" && setForm({ ...form, customer_id: v })}
+                  onValueChange={(v) => {
+                    if (v && v !== "_none") {
+                      setForm({ ...form, customer_id: v, destination: "" });
+                      loadAddresses(v);
+                    }
+                  }}
                 >
                   <SelectTrigger><SelectValue placeholder="Select customer..." /></SelectTrigger>
                   <SelectContent>
@@ -233,11 +270,43 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
 
               <div>
                 <label className="text-sm font-medium">Destination</label>
-                <Input
-                  value={form.destination}
-                  onChange={(e) => setForm({ ...form, destination: e.target.value })}
-                  placeholder="Delivery address / site name"
-                />
+                {savedAddresses.length > 0 ? (
+                  <div className="space-y-2">
+                    <Select
+                      value={savedAddresses.includes(form.destination) ? form.destination : "_custom"}
+                      onValueChange={(v) => {
+                        if (v && v !== "_custom") {
+                          setForm({ ...form, destination: v });
+                        } else if (v === "_custom") {
+                          setForm({ ...form, destination: "" });
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select address..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {savedAddresses.map((a) => (
+                          <SelectItem key={a} value={a}>{a}</SelectItem>
+                        ))}
+                        <SelectItem value="_custom">+ New address</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {(!savedAddresses.includes(form.destination)) && (
+                      <Input
+                        value={form.destination}
+                        onChange={(e) => setForm({ ...form, destination: e.target.value })}
+                        placeholder="Enter new address..."
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <Input
+                    value={form.destination}
+                    onChange={(e) => setForm({ ...form, destination: e.target.value })}
+                    placeholder="Delivery address / site name"
+                  />
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

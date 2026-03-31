@@ -9,6 +9,9 @@ interface BukkuContact {
   phone?: string;
   tax_number?: string;
   address?: string;
+  delivery_address?: string;
+  shipping_address?: string;
+  addresses?: { address?: string; type?: string }[];
   type?: string;
 }
 
@@ -86,28 +89,89 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
         result.errors.push(`Update "${contactName}": ${error.message}`);
       } else {
         result.matched++;
+        // Sync delivery addresses for matched customer
+        await syncContactAddresses(supabase, existing.id, contact);
       }
     } else {
       // Create new customer from Bukku data
-      const { error } = await supabase.from("customers").insert({
-        name: contactName,
-        phone: contact.phone || null,
-        email: contact.email || null,
-        address: contact.address || null,
-        tin_number: contact.tax_number || null,
-        bukku_contact_id: contact.id,
-        bukku_sync_status: "synced",
-        is_active: true,
-      });
+      const { data: newCustomer, error } = await supabase
+        .from("customers")
+        .insert({
+          name: contactName,
+          phone: contact.phone || null,
+          email: contact.email || null,
+          address: contact.address || null,
+          tin_number: contact.tax_number || null,
+          bukku_contact_id: contact.id,
+          bukku_sync_status: "synced",
+          is_active: true,
+        })
+        .select("id")
+        .single();
 
       if (error) {
         result.failed++;
         result.errors.push(`Create "${contactName}": ${error.message}`);
       } else {
         result.created++;
+        // Sync delivery addresses for new customer
+        if (newCustomer) {
+          await syncContactAddresses(supabase, newCustomer.id, contact);
+        }
       }
     }
   }
 
   return result;
+}
+
+/** Sync delivery addresses from Bukku contact to customer_addresses */
+async function syncContactAddresses(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  customerId: string,
+  contact: BukkuContact
+) {
+  // Collect all addresses from the Bukku contact
+  const addresses: string[] = [];
+
+  if (contact.address) addresses.push(contact.address.trim());
+  if (contact.delivery_address) addresses.push(contact.delivery_address.trim());
+  if (contact.shipping_address) addresses.push(contact.shipping_address.trim());
+
+  // Some Bukku contacts may have an addresses array
+  if (contact.addresses && Array.isArray(contact.addresses)) {
+    for (const addr of contact.addresses) {
+      if (addr.address) addresses.push(addr.address.trim());
+    }
+  }
+
+  // Deduplicate
+  const unique = [...new Set(addresses.filter((a) => a.length > 0))];
+  if (unique.length === 0) return;
+
+  // Get existing addresses for this customer
+  const { data: existing } = await supabase
+    .from("customer_addresses")
+    .select("address")
+    .eq("customer_id", customerId);
+
+  const existingSet = new Set(
+    (existing ?? []).map((e: { address: string }) => e.address.toLowerCase().trim())
+  );
+
+  // Insert new addresses only
+  const newAddresses = unique.filter(
+    (a) => !existingSet.has(a.toLowerCase())
+  );
+
+  if (newAddresses.length > 0) {
+    await supabase.from("customer_addresses").insert(
+      newAddresses.map((address) => ({
+        customer_id: customerId,
+        address,
+        source: "bukku",
+      }))
+    );
+  }
 }

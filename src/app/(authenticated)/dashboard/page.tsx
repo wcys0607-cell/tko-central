@@ -82,6 +82,7 @@ export default function DashboardPage() {
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
 
   const load = useCallback(async () => {
+    try {
     const today = new Date().toISOString().split("T")[0];
     const d30 = new Date();
     d30.setDate(d30.getDate() - 30);
@@ -101,8 +102,7 @@ export default function DashboardPage() {
         supabase
           .from("orders")
           .select("total_sale, bukku_payment_status")
-          .not("bukku_invoice_id", "is", null)
-          .neq("bukku_payment_status", "paid"),
+          .not("bukku_invoice_id", "is", null),
         supabase
           .from("stock_locations")
           .select("code, name, current_balance, capacity_liters, low_threshold, type")
@@ -137,7 +137,9 @@ export default function DashboardPage() {
 
     setPendingCount(pendingRes.count ?? 0);
 
-    const outOrders = outstandingRes.data ?? [];
+    const outOrders = (outstandingRes.data ?? []).filter(
+      (o: { bukku_payment_status: string | null }) => o.bukku_payment_status !== "paid"
+    );
     setOutstanding(
       outOrders.reduce((s: number, o: { total_sale: number | null }) => s + (o.total_sale ?? 0), 0)
     );
@@ -199,7 +201,9 @@ export default function DashboardPage() {
       });
     }
     setRecentOrders(recent);
-
+    } catch (err) {
+      console.error("Dashboard load error:", err);
+    }
     setLoading(false);
   }, [supabase]);
 
