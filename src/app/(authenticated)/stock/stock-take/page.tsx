@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { toast } from "sonner";
 
 interface StockTakeEntry {
   locationId: string;
@@ -21,9 +22,9 @@ interface StockTakeEntry {
 
 function varianceColor(pct: number): string {
   const abs = Math.abs(pct);
-  if (abs <= 2) return "text-green-600";
-  if (abs <= 5) return "text-yellow-600";
-  return "text-red-600";
+  if (abs <= 2) return "text-status-approved-fg";
+  if (abs <= 5) return "text-status-pending-fg";
+  return "text-destructive";
 }
 
 export default function StockTakePage() {
@@ -36,7 +37,6 @@ export default function StockTakePage() {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -86,7 +86,6 @@ export default function StockTakePage() {
 
   async function handleSave() {
     setError("");
-    setSuccess("");
 
     const filledEntries = entries.filter((e) => e.measured.trim() !== "");
     if (filledEntries.length === 0) {
@@ -129,9 +128,10 @@ export default function StockTakePage() {
       .insert(rows);
 
     if (insertError) {
+      toast.error(insertError.message);
       setError(insertError.message);
     } else {
-      setSuccess(
+      toast.success(
         `${rows.length} stock take${rows.length > 1 ? "s" : ""} saved`
       );
       // Reset entries
@@ -158,14 +158,14 @@ export default function StockTakePage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/stock">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold text-[#1A3A5C]">Stock Take</h1>
+        <h1 className="text-2xl font-bold text-primary">Stock Take</h1>
       </div>
 
       <Tabs defaultValue="new">
@@ -190,7 +190,7 @@ export default function StockTakePage() {
             <CardContent>
               <div className="border rounded-lg overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="bg-muted border-b">
                     <tr>
                       <th className="text-left p-3">Location</th>
                       <th className="text-right p-3">System (L)</th>
@@ -262,19 +262,14 @@ export default function StockTakePage() {
               </div>
 
               {error && (
-                <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md mt-4">
+                <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md mt-4">
                   {error}
-                </p>
-              )}
-              {success && (
-                <p className="text-sm text-green-600 bg-green-50 p-3 rounded-md mt-4">
-                  {success}
                 </p>
               )}
 
               <Button
                 onClick={handleSave}
-                className="mt-4 bg-[#1A3A5C] hover:bg-[#15304D]"
+                className="mt-4 bg-primary hover:bg-primary/90"
                 disabled={saving}
               >
                 {saving ? "Saving..." : "Save Stock Take"}
@@ -286,7 +281,7 @@ export default function StockTakePage() {
         <TabsContent value="history" className="mt-4">
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
                   <th className="text-left p-3">Date</th>
                   <th className="text-left p-3">Location</th>
@@ -314,7 +309,7 @@ export default function StockTakePage() {
                         ? ((st.variance ?? 0) / (st.system_liters ?? 1)) * 100
                         : 0;
                     return (
-                      <tr key={st.id} className="border-b hover:bg-gray-50">
+                      <tr key={st.id} className="border-b hover:bg-muted">
                         <td className="p-3 whitespace-nowrap">
                           {new Date(st.date).toLocaleDateString("en-MY")}
                         </td>

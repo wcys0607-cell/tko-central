@@ -14,18 +14,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import Image from "next/image";
+import { toast } from "sonner";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
     setLoading(true);
 
     const { data, error: authError } = await supabase.auth.signInWithPassword({
@@ -34,7 +33,7 @@ export default function LoginPage() {
     });
 
     if (authError) {
-      setError(authError.message);
+      toast.error(authError.message);
       setLoading(false);
       return;
     }
@@ -47,13 +46,13 @@ export default function LoginPage() {
         .single();
 
       if (!driver?.role) {
-        setError("No driver profile found. Contact admin.");
+        toast.error("No driver profile found. Contact admin.");
         setLoading(false);
         return;
       }
 
       if (!driver.is_active) {
-        setError("Your account has been deactivated. Contact admin.");
+        toast.error("Your account has been deactivated. Contact admin.");
         await supabase.auth.signOut();
         setLoading(false);
         return;
@@ -65,8 +64,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-primary/5 via-background to-background px-4">
+      <Card className="w-full max-w-md animate-scale-in">
         <CardHeader className="text-center space-y-4">
           <div className="mx-auto flex items-center justify-center">
             <Image
@@ -74,18 +73,18 @@ export default function LoginPage() {
               alt="Top Kim Oil"
               width={80}
               height={80}
-              className="rounded-lg object-contain"
+              className="rounded-xl object-contain shadow-sm"
             />
           </div>
           <div>
-            <CardTitle className="text-2xl font-bold text-[#1A3A5C]">
+            <CardTitle className="text-2xl font-bold text-primary">
               TKO Central
             </CardTitle>
             <CardDescription>
               Top Kim Oil Sdn. Bhd.
             </CardDescription>
           </div>
-          <div className="h-1 w-16 mx-auto rounded bg-[#E8A020]" />
+          <div className="h-1 w-16 mx-auto rounded-full bg-accent" />
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -100,6 +99,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                className="h-12"
               />
             </div>
             <div className="space-y-2">
@@ -113,16 +113,12 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                className="h-12"
               />
             </div>
-            {error && (
-              <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
-                {error}
-              </p>
-            )}
             <Button
               type="submit"
-              className="w-full bg-[#1A3A5C] hover:bg-[#15304D]"
+              className="w-full h-12 text-base font-semibold active:scale-[0.98] transition-transform"
               disabled={loading}
             >
               {loading ? "Signing in..." : "Sign In"}

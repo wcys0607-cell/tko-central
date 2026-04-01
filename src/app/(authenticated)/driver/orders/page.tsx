@@ -5,19 +5,11 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { Order } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-100 text-yellow-800",
-  approved: "bg-blue-100 text-blue-800",
-  delivered: "bg-green-100 text-green-800",
-  rejected: "bg-red-100 text-red-800",
-  cancelled: "bg-gray-100 text-gray-800",
-};
+import { StatusBadge } from "@/components/ui/status-badge";
 
 export default function DriverOrdersPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -52,14 +44,14 @@ export default function DriverOrdersPage() {
   }, [load]);
 
   return (
-    <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-4">
+    <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/driver">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <h1 className="text-xl font-bold text-[#1A3A5C]">My Orders</h1>
+        <h1 className="text-xl font-bold text-primary">My Orders</h1>
       </div>
 
       <div className="flex gap-2">
@@ -96,9 +88,7 @@ export default function DriverOrdersPage() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold">{o.quantity_liters?.toLocaleString() ?? 0}L</p>
-                    <Badge className={STATUS_COLORS[o.status] ?? ""} variant="secondary">
-                      {o.status}
-                    </Badge>
+                    <StatusBadge status={o.status} type="order" />
                   </div>
                 </div>
                 {(o.wages || o.allowance) && (

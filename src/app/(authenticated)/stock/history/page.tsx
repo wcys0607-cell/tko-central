@@ -32,8 +32,8 @@ interface HistoryPoint {
 }
 
 const COLORS = [
-  "#1A3A5C",
-  "#E8A020",
+  "#0D7377",
+  "#E8A030",
   "#2563eb",
   "#dc2626",
   "#16a34a",
@@ -141,14 +141,14 @@ export default function StockHistoryPage() {
   });
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/stock">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold text-[#1A3A5C]">Stock History</h1>
+        <h1 className="text-2xl font-bold text-primary">Stock History</h1>
       </div>
 
       {/* Controls */}
@@ -181,13 +181,13 @@ export default function StockHistoryPage() {
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select location" />
+                  <SelectValue placeholder="Select location">{(v: string | null) => { if (!v) return "Select location"; return locations.find((l) => l.id === v)?.name || locations.find((l) => l.id === v)?.code || v; }}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {locations
                     .filter((l) => !selectedLocIds.includes(l.id))
                     .map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
+                      <SelectItem key={l.id} value={l.id} label={l.name || l.code}>
                         {l.name || l.code}
                       </SelectItem>
                     ))}

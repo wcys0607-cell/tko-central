@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createBukkuInvoice } from "@/lib/bukku/invoices";
+import { pushToBukku } from "@/lib/bukku/invoices";
 import { sendWhatsApp } from "@/lib/whatsapp";
 import { createClient as createAdmin } from "@supabase/supabase-js";
 
@@ -15,17 +15,19 @@ export async function POST(req: NextRequest) {
     .eq("auth_user_id", user.id)
     .single();
 
-  if (!driver || !["admin", "manager"].includes(driver.role)) {
+  if (!driver || !["admin", "manager", "office"].includes(driver.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { orderId } = await req.json();
+  const { orderId, pushType } = await req.json();
   if (!orderId) return NextResponse.json({ error: "orderId required" }, { status: 400 });
+  if (!pushType || !["sales_order", "delivery_order"].includes(pushType)) {
+    return NextResponse.json({ error: "pushType must be 'sales_order' or 'delivery_order'" }, { status: 400 });
+  }
 
-  const result = await createBukkuInvoice(orderId);
+  const result = await pushToBukku(orderId, pushType);
 
   if (result.ok) {
-    // Fetch order details for WhatsApp notification
     const admin = createAdmin(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -33,12 +35,11 @@ export async function POST(req: NextRequest) {
 
     const { data: order } = await admin
       .from("orders")
-      .select("invoice_number, total_sale, customer_id")
+      .select("total_sale, customer_id")
       .eq("id", orderId)
       .single();
 
     if (order) {
-      // Get customer name separately
       let customerName = "Unknown";
       if (order.customer_id) {
         const { data: cust } = await admin
@@ -49,6 +50,8 @@ export async function POST(req: NextRequest) {
         if (cust) customerName = cust.name;
       }
 
+      const typeLabel = pushType === "sales_order" ? "Sales Order" : "Delivery Order";
+
       const { data: configs } = await admin
         .from("app_config")
         .select("key, value")
@@ -58,7 +61,7 @@ export async function POST(req: NextRequest) {
       if (adminPhone) {
         await sendWhatsApp({
           phone: adminPhone,
-          message: `💰 *Invoice Created in Bukku*\nCustomer: ${customerName}\nInvoice: ${order.invoice_number || "N/A"}\nAmount: RM ${(order.total_sale ?? 0).toFixed(2)}`,
+          message: `📝 *Draft ${typeLabel} Pushed to Bukku*\nCustomer: ${customerName}\nAmount: RM ${(order.total_sale ?? 0).toFixed(2)}\n${result.bukkuNumber ? `Number: ${result.bukkuNumber}\n` : ""}Please review in Bukku.`,
           type: "bukku_invoice_created",
           recipientName: "Admin",
           referenceId: orderId,

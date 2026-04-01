@@ -23,12 +23,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-const PAYMENT_COLORS: Record<string, string> = {
-  paid: "bg-green-100 text-green-700",
-  partial: "bg-yellow-100 text-yellow-700",
-  unpaid: "bg-orange-100 text-orange-700",
-  overdue: "bg-red-100 text-red-700",
-};
+import { StatusBadge } from "@/components/ui/status-badge";
 
 interface SyncLog {
   id: string;
@@ -150,9 +145,9 @@ export default function BukkuPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold text-[#1A3A5C]">Bukku Sync</h1>
+        <h1 className="text-2xl font-bold text-primary">Bukku Sync</h1>
       </div>
 
       {/* Summary Cards */}
@@ -160,7 +155,7 @@ export default function BukkuPage() {
         <Card>
           <CardContent className="pt-4 text-center">
             <p className="text-xs text-muted-foreground">Contacts Linked</p>
-            <p className="text-lg font-bold text-[#1A3A5C]">
+            <p className="text-lg font-bold text-primary">
               {customers.filter((c) => c.bukku_contact_id).length}/{customers.length}
             </p>
           </CardContent>
@@ -168,7 +163,7 @@ export default function BukkuPage() {
         <Card>
           <CardContent className="pt-4 text-center">
             <p className="text-xs text-muted-foreground">Products Linked</p>
-            <p className="text-lg font-bold text-[#1A3A5C]">
+            <p className="text-lg font-bold text-primary">
               {products.filter((p) => p.bukku_product_id).length}/{products.length}
             </p>
           </CardContent>
@@ -176,7 +171,7 @@ export default function BukkuPage() {
         <Card>
           <CardContent className="pt-4 text-center">
             <p className="text-xs text-muted-foreground">Outstanding</p>
-            <p className="text-lg font-bold text-orange-600">
+            <p className="text-lg font-bold text-accent-foreground">
               <DollarSign className="inline w-4 h-4" />
               RM {totalOutstanding.toFixed(0)}
             </p>
@@ -185,7 +180,7 @@ export default function BukkuPage() {
         <Card>
           <CardContent className="pt-4 text-center">
             <p className="text-xs text-muted-foreground">Overdue</p>
-            <p className="text-lg font-bold text-red-600">
+            <p className="text-lg font-bold text-destructive">
               <AlertTriangle className="inline w-4 h-4" />
               {overdueCount}
             </p>
@@ -209,9 +204,9 @@ export default function BukkuPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="matched">Matched</SelectItem>
-                <SelectItem value="unmatched">Unmatched</SelectItem>
+                <SelectItem value="all" label="All">All</SelectItem>
+                <SelectItem value="matched" label="Matched">Matched</SelectItem>
+                <SelectItem value="unmatched" label="Unmatched">Unmatched</SelectItem>
               </SelectContent>
             </Select>
             <div className="relative flex-1 min-w-[200px]">
@@ -239,7 +234,7 @@ export default function BukkuPage() {
           </div>
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
                   <th className="text-left p-3">Customer Name</th>
                   <th className="text-left p-3">Bukku ID</th>
@@ -256,7 +251,7 @@ export default function BukkuPage() {
                   </tr>
                 ) : (
                   filteredCustomers.map((c) => (
-                    <tr key={c.id} className="border-b hover:bg-gray-50">
+                    <tr key={c.id} className="border-b hover:bg-muted">
                       <td className="p-3 font-medium">{c.name}</td>
                       <td className="p-3 font-mono text-xs">
                         {c.bukku_contact_id ?? "—"}
@@ -267,8 +262,8 @@ export default function BukkuPage() {
                           variant="secondary"
                           className={
                             c.bukku_contact_id
-                              ? "bg-green-100 text-green-700"
-                              : "bg-gray-100 text-gray-600"
+                              ? "bg-status-approved-bg text-status-approved-fg"
+                              : "bg-muted text-muted-foreground"
                           }
                         >
                           {c.bukku_contact_id ? "Linked" : "Unlinked"}
@@ -290,9 +285,9 @@ export default function BukkuPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="matched">Matched</SelectItem>
-                <SelectItem value="unmatched">Unmatched</SelectItem>
+                <SelectItem value="all" label="All">All</SelectItem>
+                <SelectItem value="matched" label="Matched">Matched</SelectItem>
+                <SelectItem value="unmatched" label="Unmatched">Unmatched</SelectItem>
               </SelectContent>
             </Select>
             <div className="flex-1" />
@@ -312,7 +307,7 @@ export default function BukkuPage() {
           </div>
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
                   <th className="text-left p-3">Product Name</th>
                   <th className="text-left p-3">Bukku ID</th>
@@ -329,7 +324,7 @@ export default function BukkuPage() {
                   </tr>
                 ) : (
                   filteredProducts.map((p) => (
-                    <tr key={p.id} className="border-b hover:bg-gray-50">
+                    <tr key={p.id} className="border-b hover:bg-muted">
                       <td className="p-3 font-medium">{p.name}</td>
                       <td className="p-3 font-mono text-xs">
                         {p.bukku_product_id ?? "—"}
@@ -340,8 +335,8 @@ export default function BukkuPage() {
                           variant="secondary"
                           className={
                             p.bukku_product_id
-                              ? "bg-green-100 text-green-700"
-                              : "bg-gray-100 text-gray-600"
+                              ? "bg-status-approved-bg text-status-approved-fg"
+                              : "bg-muted text-muted-foreground"
                           }
                         >
                           {p.bukku_product_id ? "Linked" : "Unlinked"}
@@ -363,10 +358,10 @@ export default function BukkuPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="unpaid">Unpaid</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="all" label="All">All</SelectItem>
+                <SelectItem value="unpaid" label="Unpaid">Unpaid</SelectItem>
+                <SelectItem value="overdue" label="Overdue">Overdue</SelectItem>
+                <SelectItem value="paid" label="Paid">Paid</SelectItem>
               </SelectContent>
             </Select>
             <div className="relative flex-1 min-w-[200px]">
@@ -394,7 +389,7 @@ export default function BukkuPage() {
           </div>
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
                   <th className="text-left p-3">Date</th>
                   <th className="text-left p-3">Customer</th>
@@ -412,7 +407,7 @@ export default function BukkuPage() {
                   </tr>
                 ) : (
                   filteredOrders.map((o) => (
-                    <tr key={o.id} className="border-b hover:bg-gray-50">
+                    <tr key={o.id} className="border-b hover:bg-muted">
                       <td className="p-3 whitespace-nowrap text-xs">
                         {new Date(o.order_date).toLocaleDateString("en-MY", {
                           day: "numeric",
@@ -428,12 +423,7 @@ export default function BukkuPage() {
                         {o.invoice_number ?? "—"}
                       </td>
                       <td className="p-3">
-                        <Badge
-                          variant="secondary"
-                          className={PAYMENT_COLORS[o.bukku_payment_status ?? ""] ?? "bg-gray-100 text-gray-600"}
-                        >
-                          {o.bukku_payment_status ?? "unknown"}
-                        </Badge>
+                        <StatusBadge status={o.bukku_payment_status ?? "unknown"} type="payment" />
                       </td>
                     </tr>
                   ))
@@ -447,7 +437,7 @@ export default function BukkuPage() {
         <TabsContent value="log" className="mt-4">
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
                   <th className="text-left p-3">Timestamp</th>
                   <th className="text-left p-3">Type</th>
@@ -464,7 +454,7 @@ export default function BukkuPage() {
                   </tr>
                 ) : (
                   syncLogs.map((log) => (
-                    <tr key={log.id} className="border-b hover:bg-gray-50">
+                    <tr key={log.id} className="border-b hover:bg-muted">
                       <td className="p-3 whitespace-nowrap text-xs">
                         {new Date(log.sent_at).toLocaleString("en-MY")}
                       </td>
@@ -479,8 +469,8 @@ export default function BukkuPage() {
                           variant="secondary"
                           className={
                             log.status === "sent"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-700"
+                              ? "bg-status-approved-bg text-status-approved-fg"
+                              : "bg-destructive/10 text-destructive"
                           }
                         >
                           {log.status === "sent" ? "Success" : "Failed"}

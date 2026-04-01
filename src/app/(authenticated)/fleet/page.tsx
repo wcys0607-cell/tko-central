@@ -137,16 +137,16 @@ export default function FleetPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold text-[#1A3A5C]">Fleet Management</h1>
+        <h1 className="text-2xl font-bold text-primary">Fleet Management</h1>
         <div className="flex gap-2">
           <Link href="/fleet/documents">
             <Button variant="outline" size="sm">
               <FileText className="w-4 h-4 mr-1" /> Document Tracker
             </Button>
           </Link>
-          <Button size="sm" className="bg-[#1A3A5C] hover:bg-[#15304D]" onClick={openAdd}>
+          <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={openAdd}>
             <Plus className="w-4 h-4 mr-1" /> Add Vehicle
           </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -173,7 +173,7 @@ export default function FleetPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {VEHICLE_TYPES.map((t) => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                        <SelectItem key={t} value={t} label={t}>{t}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -195,18 +195,18 @@ export default function FleetPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Company">Company</SelectItem>
-                        <SelectItem value="Partner">Partner</SelectItem>
+                        <SelectItem value="Company" label="Company">Company</SelectItem>
+                        <SelectItem value="Partner" label="Partner">Partner</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
                 {error && (
-                  <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</p>
+                  <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</p>
                 )}
                 <Button
                   onClick={handleSave}
-                  className="w-full bg-[#1A3A5C] hover:bg-[#15304D]"
+                  className="w-full bg-primary hover:bg-primary/90"
                   disabled={saving}
                 >
                   {saving ? "Saving..." : editVehicle ? "Update" : "Add Vehicle"}
@@ -233,7 +233,7 @@ export default function FleetPage() {
 
       <div className="border rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-muted border-b">
             <tr>
               <th className="text-left p-3">Plate Number</th>
               <th className="text-left p-3">Type</th>
@@ -253,11 +253,11 @@ export default function FleetPage() {
               </tr>
             ) : (
               filtered.map((v) => (
-                <tr key={v.id} className="border-b hover:bg-gray-50">
+                <tr key={v.id} className="border-b hover:bg-muted">
                   <td className="p-3">
                     <Link
                       href={`/fleet/${v.id}`}
-                      className="font-semibold text-[#1A3A5C] hover:underline"
+                      className="font-semibold text-primary hover:underline"
                     >
                       {v.plate_number}
                     </Link>

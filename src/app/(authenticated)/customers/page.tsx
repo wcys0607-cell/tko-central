@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Customer } from "@/lib/types";
+import type { Customer, Agent } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { DataList, type DataColumn } from "@/components/ui/data-list";
 import {
   Dialog,
   DialogContent,
@@ -14,22 +15,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Pencil, ToggleLeft, ToggleRight, Eye } from "lucide-react";
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 const EMPTY_FORM = {
   name: "",
@@ -40,12 +35,13 @@ const EMPTY_FORM = {
   tin_number: "",
   credit_limit: "",
   payment_terms: "",
-  middle_man_id: "",
+  agent_id: "",
 };
 
 export default function CustomersPage() {
   const supabase = useMemo(() => createClient(), []);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [filtered, setFiltered] = useState<Customer[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -64,7 +60,7 @@ export default function CustomersPage() {
     while (true) {
       const { data } = await supabase
         .from("customers")
-        .select("*, middle_man:middle_man_id(id, name)")
+        .select("*, agent:agent_id(id, name)")
         .order("name")
         .range(from, from + pageSize - 1);
       const rows = (data ?? []) as Customer[];
@@ -73,6 +69,9 @@ export default function CustomersPage() {
       from += pageSize;
     }
     setCustomers(all);
+    // Load agents for the dropdown
+    const { data: agentData } = await supabase.from("agents").select("id,name,is_active").eq("is_active", true).order("name");
+    setAgents((agentData as Agent[]) ?? []);
     setLoading(false);
   }, [supabase]);
 
@@ -110,7 +109,7 @@ export default function CustomersPage() {
       tin_number: c.tin_number ?? "",
       credit_limit: c.credit_limit?.toString() ?? "",
       payment_terms: c.payment_terms?.toString() ?? "",
-      middle_man_id: c.middle_man_id ?? "",
+      agent_id: c.agent_id ?? "",
     });
     setError("");
     setDialogOpen(true);
@@ -133,7 +132,7 @@ export default function CustomersPage() {
       tin_number: form.tin_number.trim() || null,
       credit_limit: form.credit_limit ? parseFloat(form.credit_limit) : null,
       payment_terms: form.payment_terms ? parseInt(form.payment_terms) : null,
-      middle_man_id: form.middle_man_id || null,
+      agent_id: form.agent_id || null,
       updated_at: new Date().toISOString(),
     };
 
@@ -145,9 +144,11 @@ export default function CustomersPage() {
     }
 
     if (err) {
+      toast.error(err.message);
       setError(err.message);
     } else {
       setDialogOpen(false);
+      toast.success(editing ? "Customer updated" : "Customer added");
       fetchCustomers();
     }
     setSaving(false);
@@ -158,18 +159,38 @@ export default function CustomersPage() {
     fetchCustomers();
   }
 
-  // Middle men = customers who are referenced as middle_man_id by others (or just all active customers)
-  const middleMenOptions = customers.filter((c) => c.is_active);
+  const router = useRouter();
+
+  const columns: DataColumn<Customer>[] = [
+    {
+      key: "name",
+      label: "Customer Name",
+      className: "max-w-0 w-full",
+      mobilePrimary: true,
+      render: (c) => (
+        <Link href={`/customers/${c.id}`} className="hover:underline block truncate">
+          <span className="font-medium text-primary">{c.short_name || c.name}</span>
+        </Link>
+      ),
+    },
+    {
+      key: "bukku",
+      label: "Sync Status",
+      className: "text-center whitespace-nowrap",
+      mobileVisible: true,
+      render: (c) => <StatusBadge status={c.bukku_sync_status ?? "pending"} type="bukku" />,
+    },
+  ];
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#1A3A5C]">Customers</h1>
+          <h1 className="text-2xl font-bold">Customers</h1>
           <p className="text-sm text-muted-foreground">{customers.length} total customers</p>
         </div>
-        <Button onClick={openNew} className="bg-[#1A3A5C] hover:bg-[#15304D] gap-2">
+        <Button onClick={openNew} className="gap-2">
           <Plus className="h-4 w-4" />
           Add Customer
         </Button>
@@ -186,103 +207,15 @@ export default function CustomersPage() {
         />
       </div>
 
-      {/* Table */}
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-gray-50">
-              <TableHead>Name</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Middle Man</TableHead>
-              <TableHead className="text-right">Credit Limit</TableHead>
-              <TableHead className="text-center">Terms (days)</TableHead>
-              <TableHead className="text-center">Bukku</TableHead>
-              <TableHead className="text-center">Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                  Loading...
-                </TableCell>
-              </TableRow>
-            ) : filtered.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                  {search ? "No customers match your search." : "No customers yet. Add your first customer."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              filtered.map((c) => (
-                <TableRow key={c.id} className="hover:bg-gray-50">
-                  <TableCell>
-                    <Link href={`/customers/${c.id}`} className="hover:underline">
-                      <div className="font-medium text-[#1A3A5C]">{c.name}</div>
-                      {c.short_name && <div className="text-xs text-muted-foreground">{c.short_name}</div>}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-sm">{c.phone ?? "—"}</TableCell>
-                  <TableCell className="text-sm">
-                    {c.middle_man ? (c.middle_man as { name: string }).name : "—"}
-                  </TableCell>
-                  <TableCell className="text-right text-sm">
-                    {c.credit_limit ? `RM ${c.credit_limit.toLocaleString()}` : "—"}
-                  </TableCell>
-                  <TableCell className="text-center text-sm">{c.payment_terms ?? "—"}</TableCell>
-                  <TableCell className="text-center">
-                    <Badge
-                      variant="secondary"
-                      className={
-                        c.bukku_sync_status === "synced"
-                          ? "bg-green-100 text-green-700"
-                          : c.bukku_sync_status === "error"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-gray-100 text-gray-600"
-                      }
-                    >
-                      {c.bukku_sync_status ?? "pending"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge
-                      variant="secondary"
-                      className={c.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}
-                    >
-                      {c.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Link href={`/customers/${c.id}`}>
-                        <Button variant="ghost" size="icon" title="View details">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(c)} title="Edit">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => toggleActive(c)}
-                        title={c.is_active ? "Deactivate" : "Activate"}
-                      >
-                        {c.is_active ? (
-                          <ToggleRight className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <ToggleLeft className="h-4 w-4 text-gray-400" />
-                        )}
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {/* Table / Cards */}
+      <DataList
+        data={filtered}
+        columns={columns}
+        keyExtractor={(c) => c.id}
+        onRowClick={(c) => router.push(`/customers/${c.id}`)}
+        loading={loading}
+        emptyMessage={search ? "No customers match your search." : "No customers yet. Add your first customer."}
+      />
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -359,31 +292,31 @@ export default function CustomersPage() {
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium">Middle Man / Agent</label>
+              <label className="text-sm font-medium">Agent</label>
               <Select
-                value={form.middle_man_id || "_none"}
-                onValueChange={(v) => v && setForm({ ...form, middle_man_id: v === "_none" ? "" : v })}
+                value={form.agent_id || "_none"}
+                onValueChange={(v) => v && setForm({ ...form, agent_id: v === "_none" ? "" : v })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="None" />
+                  <SelectValue placeholder="None">{(v: string | null) => { if (!v || v === "_none") return "None"; return agents.find((a) => a.id === v)?.name ?? v; }}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="_none">None</SelectItem>
-                  {middleMenOptions.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name}
+                  <SelectItem value="_none" label="None">None</SelectItem>
+                  {agents.map((a) => (
+                    <SelectItem key={a.id} value={a.id} label={a.name}>
+                      {a.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            {error && <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</p>}
+            {error && <p className="text-sm text-destructive bg-destructive/10 p-2 rounded">{error}</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-[#1A3A5C] hover:bg-[#15304D]">
+            <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90">
               {saving ? "Saving..." : editing ? "Save Changes" : "Add Customer"}
             </Button>
           </DialogFooter>

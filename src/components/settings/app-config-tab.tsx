@@ -105,7 +105,7 @@ export function AppConfigTab() {
 
   if (loadError) {
     return (
-      <div className="text-sm text-red-600 bg-red-50 p-4 rounded">
+      <div className="text-sm text-destructive bg-destructive/10 p-4 rounded">
         Failed to load config: {loadError}
       </div>
     );
@@ -193,7 +193,7 @@ export function AppConfigTab() {
             placeholder="Enter value"
           />
           {saveError && (
-            <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{saveError}</p>
+            <p className="text-sm text-destructive bg-destructive/10 p-2 rounded">{saveError}</p>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingKey(null)}>

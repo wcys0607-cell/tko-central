@@ -1,5 +1,16 @@
 // Database types for TKO Central
 
+export interface Agent {
+  id: string;
+  name: string;
+  ic_number: string | null;
+  bank_account: string | null;
+  phone: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -12,6 +23,7 @@ export interface Customer {
   credit_limit: number | null;
   payment_terms: number | null;
   middle_man_id: string | null;
+  agent_id: string | null;
   billing_address: string | null;
   shipping_address: string | null;
   fax: string | null;
@@ -29,6 +41,7 @@ export interface Customer {
   updated_at: string;
   // joined
   middle_man?: Pick<Customer, "id" | "name"> | null;
+  agent?: Pick<Agent, "id" | "name"> | null;
 }
 
 export interface Product {
@@ -73,7 +86,7 @@ export interface Order {
   unit_price: number | null;
   total_sale: number | null;
   sst_amount: number | null;
-  cost_price: number | null;
+  cost_to_agent: number | null;
   load_from: string | null;
   driver_id: string | null;
   vehicle_id: string | null;
@@ -83,8 +96,13 @@ export interface Order {
   acceptance: string | null;
   order_type: "own" | "agent" | null;
   middle_man_id: string | null;
-  commission_rate: number | null;
+  agent_name: string | null;
+  dn_received: boolean;
+  receipt_no: string | null;
+  delivery_remark: string | null;
   remark: string | null;
+  bukku_so_id: number | null;
+  bukku_do_id: number | null;
   created_by: string | null;
   approved_by: string | null;
   bukku_invoice_id: number | null;
@@ -108,6 +126,24 @@ export interface Order {
   vehicle?: Pick<Vehicle, "id" | "plate_number"> | null;
   creator?: Pick<Driver, "id" | "name"> | null;
   approver?: Pick<Driver, "id" | "name"> | null;
+  items?: OrderItem[];
+}
+
+export interface OrderItem {
+  id: string;
+  order_id: string;
+  product_id: string | null;
+  description: string | null;
+  quantity_liters: number;
+  unit_price: number;
+  cost_to_agent: number | null;
+  sst_rate: number;
+  line_total: number;
+  sst_amount: number;
+  sort_order: number;
+  created_at: string;
+  // joined
+  product?: Pick<Product, "id" | "name" | "unit"> | null;
 }
 
 export interface RecurringRule {
@@ -122,6 +158,17 @@ export interface RecurringRule {
   created_at: string;
   // joined
   customer?: Pick<Customer, "id" | "name"> | null;
+  items?: RecurringRuleItem[];
+}
+
+export interface RecurringRuleItem {
+  id: string;
+  rule_id: string;
+  product_id: string | null;
+  quantity_liters: number;
+  sort_order: number;
+  // joined
+  product?: Pick<Product, "id" | "name"> | null;
 }
 
 export interface StockLocation {

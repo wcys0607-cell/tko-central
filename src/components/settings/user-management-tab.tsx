@@ -161,13 +161,13 @@ export function UserManagementTab() {
   function roleBadgeColor(role: string) {
     switch (role) {
       case "admin":
-        return "bg-red-100 text-red-700 border-red-200";
+        return "bg-destructive/10 text-destructive border-destructive/20";
       case "manager":
-        return "bg-blue-100 text-blue-700 border-blue-200";
+        return "bg-status-delivered-bg text-status-delivered-fg border-status-delivered-fg/20";
       case "office":
-        return "bg-green-100 text-green-700 border-green-200";
+        return "bg-status-approved-bg text-status-approved-fg border-status-approved-fg/20";
       default:
-        return "bg-gray-100 text-gray-700 border-gray-200";
+        return "bg-muted text-muted-foreground border-muted";
     }
   }
 
@@ -220,8 +220,8 @@ export function UserManagementTab() {
                       variant={driver.is_active ? "default" : "secondary"}
                       className={
                         driver.is_active
-                          ? "bg-green-600"
-                          : "bg-gray-400 text-white"
+                          ? "bg-status-approved-fg"
+                          : "bg-muted-foreground text-white"
                       }
                     >
                       {driver.is_active ? "Active" : "Inactive"}
@@ -242,9 +242,9 @@ export function UserManagementTab() {
                         onClick={() => toggleActive(driver)}
                       >
                         {driver.is_active ? (
-                          <UserX className="h-4 w-4 text-red-500" />
+                          <UserX className="h-4 w-4 text-destructive" />
                         ) : (
-                          <UserCheck className="h-4 w-4 text-green-500" />
+                          <UserCheck className="h-4 w-4 text-status-approved-fg" />
                         )}
                       </Button>
                     </div>
@@ -333,15 +333,15 @@ export function UserManagementTab() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
-                  <SelectItem value="office">Office</SelectItem>
-                  <SelectItem value="driver">Driver</SelectItem>
+                  <SelectItem value="admin" label="Admin">Admin</SelectItem>
+                  <SelectItem value="manager" label="Manager">Manager</SelectItem>
+                  <SelectItem value="office" label="Office">Office</SelectItem>
+                  <SelectItem value="driver" label="Driver">Driver</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
+              <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
                 {error}
               </p>
             )}

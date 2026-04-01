@@ -13,19 +13,19 @@ const DOC_TYPES = ["Road Tax", "Insurance", "Puspakom", "SPAD Permit", "Grant"];
 function cellColor(doc: FleetDocument | undefined): string {
   if (!doc) return "";
   const days = doc.days_remaining ?? 999;
-  if (days < 0) return "bg-red-100";
-  if (days <= 7) return "bg-red-50";
-  if (days <= 30) return "bg-yellow-50";
-  return "bg-green-50";
+  if (days < 0) return "bg-destructive/10";
+  if (days <= 7) return "bg-destructive/10";
+  if (days <= 30) return "bg-status-pending-bg";
+  return "bg-status-approved-bg";
 }
 
-function cellEmoji(doc: FleetDocument | undefined): string {
-  if (!doc) return "—";
+function cellDot(doc: FleetDocument | undefined): { color: string; label: string } | null {
+  if (!doc) return null;
   const days = doc.days_remaining ?? 999;
-  if (days < 0) return "🔴";
-  if (days <= 7) return "🔴";
-  if (days <= 30) return "🟡";
-  return "🟢";
+  if (days < 0) return { color: "bg-destructive", label: "Expired" };
+  if (days <= 7) return { color: "bg-destructive", label: "Critical" };
+  if (days <= 30) return { color: "bg-status-pending-fg", label: "Expiring" };
+  return { color: "bg-status-approved-fg", label: "Valid" };
 }
 
 export default function DocumentTrackerPage() {
@@ -69,7 +69,7 @@ export default function DocumentTrackerPage() {
   if (loading) return <div className="p-6 text-muted-foreground">Loading...</div>;
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Link href="/fleet">
@@ -77,13 +77,13 @@ export default function DocumentTrackerPage() {
               <ArrowLeft className="w-4 h-4" />
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold text-[#1A3A5C]">Document Tracker</h1>
+          <h1 className="text-2xl font-bold text-primary">Document Tracker</h1>
         </div>
         <Button
           variant={showExpiringOnly ? "default" : "outline"}
           size="sm"
           onClick={() => setShowExpiringOnly(!showExpiringOnly)}
-          className={showExpiringOnly ? "bg-red-600 hover:bg-red-700" : ""}
+          className={showExpiringOnly ? "bg-destructive hover:bg-destructive/90" : ""}
         >
           {showExpiringOnly ? "Showing Expiring Only" : "Show Expiring Only"}
         </Button>
@@ -91,9 +91,9 @@ export default function DocumentTrackerPage() {
 
       <div className="border rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-muted border-b">
             <tr>
-              <th className="text-left p-3 sticky left-0 bg-gray-50 z-10">Vehicle</th>
+              <th className="text-left p-3 sticky left-0 bg-muted z-10">Vehicle</th>
               {DOC_TYPES.map((dt) => (
                 <th key={dt} className="text-center p-3 min-w-[130px]">{dt}</th>
               ))}
@@ -110,9 +110,9 @@ export default function DocumentTrackerPage() {
               filteredVehicles.map((v) => {
                 const vDocs = docMap.get(v.id);
                 return (
-                  <tr key={v.id} className="border-b hover:bg-gray-50">
+                  <tr key={v.id} className="border-b hover:bg-muted">
                     <td className="p-3 font-semibold sticky left-0 bg-white z-10">
-                      <Link href={`/fleet/${v.id}`} className="text-[#1A3A5C] hover:underline">
+                      <Link href={`/fleet/${v.id}`} className="text-primary hover:underline">
                         {v.plate_number}
                       </Link>
                     </td>
@@ -125,7 +125,7 @@ export default function DocumentTrackerPage() {
                               href={`/fleet/${v.id}`}
                               className="block hover:opacity-80"
                             >
-                              <span className="text-lg">{cellEmoji(doc)}</span>
+                              {(() => { const dot = cellDot(doc); return dot ? <span className={`inline-block w-3 h-3 rounded-full ${dot.color}`} title={dot.label} /> : null; })()}
                               <br />
                               <span className="text-xs">
                                 {doc.expiry_date
@@ -162,9 +162,9 @@ export default function DocumentTrackerPage() {
       </div>
 
       <div className="flex gap-4 text-xs text-muted-foreground">
-        <span>🟢 &gt;30 days</span>
-        <span>🟡 7-30 days</span>
-        <span>🔴 &lt;7 days or expired</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-status-approved-fg" /> &gt;30 days</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-status-pending-fg" /> 7-30 days</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-destructive" /> &lt;7 days or expired</span>
       </div>
     </div>
   );

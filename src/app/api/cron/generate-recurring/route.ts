@@ -84,6 +84,26 @@ export async function POST(request: Request) {
       errors.push(`Rule ${rule.id}: ${insertErr.message}`);
     } else {
       created.push(newOrder.id);
+
+      // Create order_items from recurring_rule_items
+      const { data: ruleItems } = await supabase
+        .from("recurring_rule_items")
+        .select("product_id, quantity_liters, sort_order")
+        .eq("rule_id", rule.id)
+        .order("sort_order");
+
+      if (ruleItems && ruleItems.length > 0) {
+        await supabase.from("order_items").insert(
+          ruleItems.map((ri: { product_id: string | null; quantity_liters: number; sort_order: number }) => ({
+            order_id: newOrder.id,
+            product_id: ri.product_id,
+            quantity_liters: ri.quantity_liters,
+            unit_price: 0,
+            sst_rate: 0,
+            sort_order: ri.sort_order,
+          }))
+        );
+      }
     }
   }
 

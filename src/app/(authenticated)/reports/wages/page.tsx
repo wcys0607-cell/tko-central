@@ -162,14 +162,14 @@ export default function WagesReportPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/reports">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <h1 className="text-xl font-bold text-[#1A3A5C]">Wages Report</h1>
+        <h1 className="text-xl font-bold text-primary">Wages Report</h1>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -179,7 +179,7 @@ export default function WagesReportPage() {
           </SelectTrigger>
           <SelectContent>
             {monthOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              <SelectItem key={o.value} value={o.value} label={o.label}>{o.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -193,7 +193,7 @@ export default function WagesReportPage() {
         </Button>
         <Button
           size="sm"
-          className="bg-green-600 hover:bg-green-700"
+          className="bg-status-approved-fg hover:bg-status-approved-fg/90"
           onClick={handleSendWhatsApp}
           disabled={data.length === 0 || sending}
         >
@@ -213,7 +213,7 @@ export default function WagesReportPage() {
       ) : (
         <div className="border rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-muted border-b">
               <tr>
                 <th className="text-left p-3">Driver</th>
                 <th className="text-right p-3">Deliveries</th>
@@ -226,7 +226,7 @@ export default function WagesReportPage() {
             </thead>
             <tbody>
               {data.map((dw) => (
-                <tr key={dw.driver_id} className="border-b hover:bg-gray-50">
+                <tr key={dw.driver_id} className="border-b hover:bg-muted">
                   <td className="p-3 font-medium">{dw.driver_name}</td>
                   <td className="p-3 text-right">{dw.deliveries}</td>
                   <td className="p-3 text-right font-mono">{dw.total_qty.toLocaleString()}</td>
@@ -238,7 +238,7 @@ export default function WagesReportPage() {
                   </td>
                 </tr>
               ))}
-              <tr className="bg-gray-50 font-bold">
+              <tr className="bg-muted font-bold">
                 <td className="p-3">TOTAL</td>
                 <td className="p-3 text-right">{data.reduce((s, d) => s + d.deliveries, 0)}</td>
                 <td className="p-3 text-right font-mono">{data.reduce((s, d) => s + d.total_qty, 0).toLocaleString()}</td>

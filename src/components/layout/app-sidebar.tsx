@@ -87,7 +87,7 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border px-4 py-3">
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-[#E8A020] text-[#1A3A5C] text-xs font-bold">
+            <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">
               {initials}
             </AvatarFallback>
           </Avatar>

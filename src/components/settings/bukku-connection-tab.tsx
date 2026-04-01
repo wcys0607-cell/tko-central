@@ -183,7 +183,7 @@ export function BukkuConnectionTab() {
             <Button
               onClick={handleSave}
               disabled={saving}
-              className="bg-[#1A3A5C] hover:bg-[#15304D]"
+              className="bg-primary hover:bg-primary/90"
             >
               {saving ? "Saving..." : "Save"}
             </Button>
@@ -196,12 +196,12 @@ export function BukkuConnectionTab() {
               Test Connection
             </Button>
             {connectionStatus === "ok" && (
-              <Badge className="bg-green-100 text-green-700">
+              <Badge className="bg-status-approved-bg text-status-approved-fg">
                 <Check className="w-3 h-3 mr-1" /> Connected
               </Badge>
             )}
             {connectionStatus === "failed" && (
-              <Badge className="bg-red-100 text-red-700">
+              <Badge className="bg-destructive/10 text-destructive">
                 <X className="w-3 h-3 mr-1" /> Failed
               </Badge>
             )}

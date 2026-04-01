@@ -27,12 +27,12 @@ function FillBar({ location }: { location: StockLocation }) {
   const pct = capacity > 0 ? Math.min((balance / capacity) * 100, 100) : 0;
   const isLow = threshold > 0 && balance < threshold;
 
-  let color = "bg-green-500";
-  if (pct < 20) color = "bg-red-500";
-  else if (pct < 50) color = "bg-yellow-500";
+  let color = "bg-status-approved-fg";
+  if (pct < 20) color = "bg-destructive";
+  else if (pct < 50) color = "bg-status-pending-fg";
 
   return (
-    <Card className={isLow ? "border-red-400 bg-red-50" : ""}>
+    <Card className={isLow ? "border-destructive bg-destructive/10" : ""}>
       <CardContent className="pt-4 pb-3 px-4">
         <div className="flex items-center justify-between mb-2">
           <div>
@@ -51,7 +51,7 @@ function FillBar({ location }: { location: StockLocation }) {
           </div>
         </div>
         {capacity > 0 ? (
-          <div className="w-full bg-gray-200 rounded-full h-3">
+          <div className="w-full bg-muted rounded-full h-3">
             <div
               className={`${color} h-3 rounded-full transition-all`}
               style={{ width: `${pct}%` }}
@@ -159,9 +159,9 @@ export default function StockDashboardPage() {
   ).length;
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold text-[#1A3A5C]">Stock Control</h1>
+        <h1 className="text-2xl font-bold text-primary">Stock Control</h1>
         <div className="flex gap-2 flex-wrap">
           <Link href="/stock/transactions">
             <Button variant="outline" size="sm">
@@ -169,7 +169,7 @@ export default function StockDashboardPage() {
             </Button>
           </Link>
           <Link href="/stock/transactions/new">
-            <Button size="sm" className="bg-[#1A3A5C] hover:bg-[#15304D]">
+            <Button size="sm" className="bg-primary hover:bg-primary/90">
               <Plus className="w-4 h-4 mr-1" /> New Entry
             </Button>
           </Link>
@@ -219,7 +219,7 @@ export default function StockDashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-green-600">
+            <p className="text-2xl font-bold text-status-approved-fg">
               {todaySummary.purchases.toLocaleString()}L
             </p>
           </CardContent>
@@ -231,7 +231,7 @@ export default function StockDashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-red-600">
+            <p className="text-2xl font-bold text-destructive">
               {todaySummary.sales.toLocaleString()}L
             </p>
           </CardContent>
@@ -274,8 +274,8 @@ export default function StockDashboardPage() {
 
       {/* Low Stock Alert */}
       {lowCount > 0 && (
-        <div className="bg-red-50 border border-red-300 rounded-lg p-4">
-          <p className="text-red-700 font-semibold">
+        <div className="bg-destructive/10 border border-destructive rounded-lg p-4">
+          <p className="text-destructive font-semibold">
             {lowCount} location{lowCount > 1 ? "s" : ""} below threshold
           </p>
         </div>

@@ -18,10 +18,10 @@ import Link from "next/link";
 import { Plus, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 
 const TYPE_COLORS: Record<string, string> = {
-  purchase: "bg-green-100 text-green-800",
-  sale: "bg-red-100 text-red-800",
-  transfer: "bg-blue-100 text-blue-800",
-  adjustment: "bg-yellow-100 text-yellow-800",
+  purchase: "bg-status-approved-bg text-status-approved-fg",
+  sale: "bg-destructive/10 text-destructive",
+  transfer: "bg-status-delivered-bg text-status-delivered-fg",
+  adjustment: "bg-status-pending-bg text-status-pending-fg",
 };
 
 const PAGE_SIZE = 50;
@@ -89,7 +89,7 @@ export default function TransactionLogPage() {
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Link href="/stock">
@@ -97,12 +97,12 @@ export default function TransactionLogPage() {
               <ArrowLeft className="w-4 h-4" />
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold text-[#1A3A5C]">
+          <h1 className="text-2xl font-bold text-primary">
             Transaction Log
           </h1>
         </div>
         <Link href="/stock/transactions/new">
-          <Button size="sm" className="bg-[#1A3A5C] hover:bg-[#15304D]">
+          <Button size="sm" className="bg-primary hover:bg-primary/90">
             <Plus className="w-4 h-4 mr-1" /> New Entry
           </Button>
         </Link>
@@ -129,21 +129,21 @@ export default function TransactionLogPage() {
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="purchase">Purchase</SelectItem>
-                <SelectItem value="sale">Sale</SelectItem>
-                <SelectItem value="transfer">Transfer</SelectItem>
-                <SelectItem value="adjustment">Adjustment</SelectItem>
+                <SelectItem value="all" label="All Types">All Types</SelectItem>
+                <SelectItem value="purchase" label="Purchase">Purchase</SelectItem>
+                <SelectItem value="sale" label="Sale">Sale</SelectItem>
+                <SelectItem value="transfer" label="Transfer">Transfer</SelectItem>
+                <SelectItem value="adjustment" label="Adjustment">Adjustment</SelectItem>
               </SelectContent>
             </Select>
             <Select value={locationFilter} onValueChange={(v) => v && setLocationFilter(v)}>
               <SelectTrigger>
-                <SelectValue placeholder="Location" />
+                <SelectValue placeholder="Location">{(v: string | null) => { if (!v || v === "all") return "All Locations"; return locations.find((l) => l.id === v)?.name || locations.find((l) => l.id === v)?.code || v; }}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Locations</SelectItem>
+                <SelectItem value="all" label="All Locations">All Locations</SelectItem>
                 {locations.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
+                  <SelectItem key={l.id} value={l.id} label={l.name || l.code}>
                     {l.name || l.code}
                   </SelectItem>
                 ))}
@@ -154,9 +154,9 @@ export default function TransactionLogPage() {
                 <SelectValue placeholder="Owner" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Owners</SelectItem>
-                <SelectItem value="Company">Company</SelectItem>
-                <SelectItem value="Partner">Partner</SelectItem>
+                <SelectItem value="all" label="All Owners">All Owners</SelectItem>
+                <SelectItem value="Company" label="Company">Company</SelectItem>
+                <SelectItem value="Partner" label="Partner">Partner</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -166,7 +166,7 @@ export default function TransactionLogPage() {
       {/* Table */}
       <div className="border rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-muted border-b">
             <tr>
               <th className="text-left p-3">Date</th>
               <th className="text-left p-3">Type</th>
@@ -196,7 +196,7 @@ export default function TransactionLogPage() {
               </tr>
             ) : (
               transactions.map((tx) => (
-                <tr key={tx.id} className="border-b hover:bg-gray-50">
+                <tr key={tx.id} className="border-b hover:bg-muted">
                   <td className="p-3 whitespace-nowrap">
                     {new Date(tx.transaction_date).toLocaleDateString("en-MY")}
                   </td>

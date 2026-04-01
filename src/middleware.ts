@@ -7,6 +7,11 @@ const PUBLIC_ROUTES = ["/login"];
 // Routes handled by Next.js / API — skip role check
 const SKIP_ROUTES = ["/api/", "/_next/", "/favicon"];
 
+// Cookie name for cached role — avoids querying `drivers` on every navigation
+const ROLE_COOKIE = "tko-role";
+// How long to cache role (seconds) — re-check every 5 minutes
+const ROLE_CACHE_TTL = 300;
+
 export async function middleware(request: NextRequest) {
   const { supabase, user, response } = await updateSession(request);
   const { pathname } = request.nextUrl;
@@ -19,6 +24,14 @@ export async function middleware(request: NextRequest) {
   // Public routes — allow through
   if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
     if (user) {
+      // Try cached role first
+      const cachedRole = request.cookies.get(ROLE_COOKIE)?.value;
+      if (cachedRole) {
+        return NextResponse.redirect(
+          new URL(getRoleRedirectPath(cachedRole as UserRole), request.url)
+        );
+      }
+
       const { data: driver } = await supabase
         .from("drivers")
         .select("role, is_active")
@@ -26,9 +39,15 @@ export async function middleware(request: NextRequest) {
         .single();
 
       if (driver?.role && driver.is_active) {
-        return NextResponse.redirect(
-          new URL(getRoleRedirectPath(driver.role as UserRole), request.url)
-        );
+        const redirectUrl = new URL(getRoleRedirectPath(driver.role as UserRole), request.url);
+        const res = NextResponse.redirect(redirectUrl);
+        res.cookies.set(ROLE_COOKIE, driver.role, {
+          maxAge: ROLE_CACHE_TTL,
+          httpOnly: true,
+          sameSite: "lax",
+          path: "/",
+        });
+        return res;
       }
     }
     return response;
@@ -36,28 +55,50 @@ export async function middleware(request: NextRequest) {
 
   // Protected routes — must be logged in
   if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const res = NextResponse.redirect(new URL("/login", request.url));
+    res.cookies.delete(ROLE_COOKIE);
+    return res;
   }
 
-  // Fetch driver profile with is_active check
-  const { data: driver } = await supabase
-    .from("drivers")
-    .select("role, is_active")
-    .eq("auth_user_id", user.id)
-    .single();
+  // Try cached role from cookie to skip the DB query
+  const cachedRole = request.cookies.get(ROLE_COOKIE)?.value as UserRole | undefined;
+  let role: UserRole;
 
-  if (!driver?.role) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  if (cachedRole) {
+    role = cachedRole;
+  } else {
+    // No cache — fetch from DB
+    const { data: driver } = await supabase
+      .from("drivers")
+      .select("role, is_active")
+      .eq("auth_user_id", user.id)
+      .single();
+
+    if (!driver?.role) {
+      const res = NextResponse.redirect(new URL("/login", request.url));
+      res.cookies.delete(ROLE_COOKIE);
+      return res;
+    }
+
+    // Block deactivated users
+    if (!driver.is_active) {
+      await supabase.auth.signOut();
+      const res = NextResponse.redirect(new URL("/login", request.url));
+      res.cookies.delete(ROLE_COOKIE);
+      return res;
+    }
+
+    role = driver.role as UserRole;
+
+    // Cache role for subsequent navigations
+    response.cookies.set(ROLE_COOKIE, role, {
+      maxAge: ROLE_CACHE_TTL,
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+    });
   }
 
-  // Block deactivated users
-  if (!driver.is_active) {
-    // Sign them out and redirect to login
-    await supabase.auth.signOut();
-    return NextResponse.redirect(new URL("/login", request.url));
-  }
-
-  const role = driver.role as UserRole;
   const defaultPath = getRoleRedirectPath(role);
 
   // Default-deny: check if route is in ROUTE_ACCESS

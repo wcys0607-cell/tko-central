@@ -138,14 +138,14 @@ export default function StockReportPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/reports">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <h1 className="text-xl font-bold text-[#1A3A5C]">Stock Report</h1>
+        <h1 className="text-xl font-bold text-primary">Stock Report</h1>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -166,13 +166,13 @@ export default function StockReportPage() {
             <Card>
               <CardContent className="pt-4 text-center">
                 <p className="text-xs text-muted-foreground">Purchases</p>
-                <p className="text-lg font-bold text-green-600">+{purchases.toLocaleString()}L</p>
+                <p className="text-lg font-bold text-status-approved-fg">+{purchases.toLocaleString()}L</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-4 text-center">
                 <p className="text-xs text-muted-foreground">Sales</p>
-                <p className="text-lg font-bold text-red-600">-{sales.toLocaleString()}L</p>
+                <p className="text-lg font-bold text-destructive">-{sales.toLocaleString()}L</p>
               </CardContent>
             </Card>
             <Card>
@@ -184,10 +184,10 @@ export default function StockReportPage() {
           </div>
 
           {/* Variance Table */}
-          <h2 className="text-sm font-semibold text-[#1A3A5C]">Variance (System vs Last Stock Take)</h2>
+          <h2 className="text-sm font-semibold text-primary">Variance (System vs Last Stock Take)</h2>
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
                   <th className="text-left p-3">Location</th>
                   <th className="text-right p-3">System Balance</th>
@@ -201,7 +201,7 @@ export default function StockReportPage() {
                     <td className="p-3 font-medium">{v.code}</td>
                     <td className="p-3 text-right font-mono">{v.current_balance.toLocaleString()}</td>
                     <td className="p-3 text-right font-mono">{v.last_stock_take !== null ? v.last_stock_take.toLocaleString() : "—"}</td>
-                    <td className={`p-3 text-right font-mono ${v.variance && Math.abs(v.variance) > v.current_balance * 0.05 ? "text-red-600 font-bold" : ""}`}>
+                    <td className={`p-3 text-right font-mono ${v.variance && Math.abs(v.variance) > v.current_balance * 0.05 ? "text-destructive font-bold" : ""}`}>
                       {v.variance !== null ? v.variance.toLocaleString() : "—"}
                     </td>
                   </tr>
@@ -211,10 +211,10 @@ export default function StockReportPage() {
           </div>
 
           {/* Movement Table */}
-          <h2 className="text-sm font-semibold text-[#1A3A5C]">Movements ({movements.length})</h2>
+          <h2 className="text-sm font-semibold text-primary">Movements ({movements.length})</h2>
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
                   <th className="text-left p-3">Date</th>
                   <th className="text-left p-3">Type</th>
@@ -227,7 +227,7 @@ export default function StockReportPage() {
               </thead>
               <tbody>
                 {movements.slice(0, 100).map((m) => (
-                  <tr key={m.id} className="border-b hover:bg-gray-50">
+                  <tr key={m.id} className="border-b hover:bg-muted">
                     <td className="p-3 whitespace-nowrap text-xs">{m.transaction_date}</td>
                     <td className="p-3 text-xs capitalize">{m.type}</td>
                     <td className="p-3 text-xs">{m.source_code}</td>

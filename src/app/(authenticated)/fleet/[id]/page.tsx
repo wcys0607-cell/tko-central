@@ -35,12 +35,12 @@ const SERVICE_TYPES = [
 ];
 
 function docStatusColor(status: string | null, days: number | null): string {
-  if (status === "expired" || (days != null && days < 0)) return "bg-red-100 text-red-800";
+  if (status === "expired" || (days != null && days < 0)) return "bg-destructive/10 text-destructive";
   if (status === "expiring_soon" || (days != null && days <= 30)) {
-    if (days != null && days <= 7) return "bg-red-100 text-red-800";
-    return "bg-yellow-100 text-yellow-800";
+    if (days != null && days <= 7) return "bg-destructive/10 text-destructive";
+    return "bg-status-pending-bg text-status-pending-fg";
   }
-  return "bg-green-100 text-green-800";
+  return "bg-status-approved-bg text-status-approved-fg";
 }
 
 export default function VehicleDetailPage({
@@ -231,10 +231,10 @@ export default function VehicleDetailPage({
   }
 
   if (loading) return <div className="p-6 text-muted-foreground">Loading...</div>;
-  if (!vehicle) return <div className="p-6 text-red-600">Vehicle not found.</div>;
+  if (!vehicle) return <div className="p-6 text-destructive">Vehicle not found.</div>;
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/fleet">
           <Button variant="ghost" size="icon">
@@ -242,7 +242,7 @@ export default function VehicleDetailPage({
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-[#1A3A5C]">
+          <h1 className="text-2xl font-bold text-primary">
             {vehicle.plate_number}
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -263,7 +263,7 @@ export default function VehicleDetailPage({
           <div className="flex justify-end">
             <Button
               size="sm"
-              className="bg-[#1A3A5C] hover:bg-[#15304D]"
+              className="bg-primary hover:bg-primary/90"
               onClick={openAddDoc}
             >
               <Plus className="w-4 h-4 mr-1" /> Add Document
@@ -272,7 +272,7 @@ export default function VehicleDetailPage({
 
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
                   <th className="text-left p-3">Document</th>
                   <th className="text-left p-3">Expiry</th>
@@ -291,7 +291,7 @@ export default function VehicleDetailPage({
                   </tr>
                 ) : (
                   documents.map((doc) => (
-                    <tr key={doc.id} className="border-b hover:bg-gray-50">
+                    <tr key={doc.id} className="border-b hover:bg-muted">
                       <td className="p-3 font-medium">{doc.doc_type}</td>
                       <td className="p-3">
                         {doc.expiry_date
@@ -319,7 +319,7 @@ export default function VehicleDetailPage({
                             href={doc.document_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 hover:underline text-xs"
+                            className="text-status-delivered-fg hover:underline text-xs"
                           >
                             View
                           </a>
@@ -356,7 +356,7 @@ export default function VehicleDetailPage({
                     </SelectTrigger>
                     <SelectContent>
                       {DOC_TYPES.map((t) => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                        <SelectItem key={t} value={t} label={t}>{t}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -381,18 +381,18 @@ export default function VehicleDetailPage({
                   {editDoc?.document_url && (
                     <p className="text-xs text-muted-foreground">
                       Current:{" "}
-                      <a href={editDoc.document_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                      <a href={editDoc.document_url} target="_blank" rel="noopener noreferrer" className="text-status-delivered-fg hover:underline">
                         View existing
                       </a>
                     </p>
                   )}
                 </div>
                 {docError && (
-                  <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{docError}</p>
+                  <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{docError}</p>
                 )}
                 <Button
                   onClick={handleSaveDoc}
-                  className="w-full bg-[#1A3A5C] hover:bg-[#15304D]"
+                  className="w-full bg-primary hover:bg-primary/90"
                   disabled={docSaving}
                 >
                   {docSaving ? "Saving..." : "Save"}
@@ -407,7 +407,7 @@ export default function VehicleDetailPage({
           <div className="flex justify-end">
             <Button
               size="sm"
-              className="bg-[#1A3A5C] hover:bg-[#15304D]"
+              className="bg-primary hover:bg-primary/90"
               onClick={() => {
                 setServiceDate(new Date().toISOString().split("T")[0]);
                 setOdometer("");
@@ -426,7 +426,7 @@ export default function VehicleDetailPage({
 
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
                   <th className="text-left p-3">Date</th>
                   <th className="text-left p-3">Service Type</th>
@@ -446,7 +446,7 @@ export default function VehicleDetailPage({
                   </tr>
                 ) : (
                   maintenance.map((m) => (
-                    <tr key={m.id} className="border-b hover:bg-gray-50">
+                    <tr key={m.id} className="border-b hover:bg-muted">
                       <td className="p-3 whitespace-nowrap">
                         {new Date(m.service_date).toLocaleDateString("en-MY")}
                       </td>
@@ -487,7 +487,7 @@ export default function VehicleDetailPage({
                       <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                       <SelectContent>
                         {SERVICE_TYPES.map((t) => (
-                          <SelectItem key={t} value={t}>{t}</SelectItem>
+                          <SelectItem key={t} value={t} label={t}>{t}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -522,11 +522,11 @@ export default function VehicleDetailPage({
                   />
                 </div>
                 {maintError && (
-                  <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{maintError}</p>
+                  <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{maintError}</p>
                 )}
                 <Button
                   onClick={handleSaveMaint}
-                  className="w-full bg-[#1A3A5C] hover:bg-[#15304D]"
+                  className="w-full bg-primary hover:bg-primary/90"
                   disabled={maintSaving}
                 >
                   {maintSaving ? "Saving..." : "Save"}
@@ -540,7 +540,7 @@ export default function VehicleDetailPage({
         <TabsContent value="checklists" className="mt-4">
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
                   <th className="text-left p-3">Date</th>
                   <th className="text-left p-3">Driver</th>
@@ -558,7 +558,7 @@ export default function VehicleDetailPage({
                   </tr>
                 ) : (
                   checklists.map((c) => (
-                    <tr key={c.id} className="border-b hover:bg-gray-50">
+                    <tr key={c.id} className="border-b hover:bg-muted">
                       <td className="p-3 whitespace-nowrap">
                         {new Date(c.check_date).toLocaleDateString("en-MY")}
                       </td>
@@ -570,7 +570,7 @@ export default function VehicleDetailPage({
                         {c.has_defect ? (
                           <Badge variant="destructive">Yes</Badge>
                         ) : (
-                          <Badge className="bg-green-100 text-green-800" variant="secondary">No</Badge>
+                          <Badge className="bg-status-approved-bg text-status-approved-fg" variant="secondary">No</Badge>
                         )}
                       </td>
                       <td className="p-3 max-w-[300px]">
@@ -580,7 +580,7 @@ export default function VehicleDetailPage({
                             href={c.defect_photo_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="ml-2 text-blue-600 hover:underline text-xs"
+                            className="ml-2 text-status-delivered-fg hover:underline text-xs"
                           >
                             Photo
                           </a>

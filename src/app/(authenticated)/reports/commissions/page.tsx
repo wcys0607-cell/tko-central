@@ -27,8 +27,8 @@ interface AgentCommission {
       customer_name: string;
       quantity_liters: number;
       unit_price: number;
-      cost_price: number;
-      commission_rate: number;
+      cost_to_agent: number;
+      commission_per_liter: number;
       total_commission: number;
       dn_number: string;
     }[];
@@ -68,27 +68,27 @@ export default function CommissionsReportPage() {
     const { data: orders } = await supabase
       .from("orders")
       .select(
-        "order_date, quantity_liters, unit_price, cost_price, commission_rate, dn_number, middle_man_id, customer:customers!orders_customer_id_fkey(name), agent:customers!orders_middle_man_id_fkey(id, name)"
+        "order_date, quantity_liters, unit_price, cost_to_agent, dn_number, agent_name, customer:customers!orders_customer_id_fkey(name)"
       )
       .eq("order_type", "agent")
       .gte("order_date", firstDay)
       .lte("order_date", lastDayStr)
       .in("status", ["approved", "delivered"])
-      .not("middle_man_id", "is", null)
+      .not("agent_name", "is", null)
       .order("order_date");
 
     // Group by agent → customer
     const agentMap = new Map<string, AgentCommission>();
 
     for (const o of orders ?? []) {
-      const agentId = o.middle_man_id as string;
-      const agentName = Array.isArray(o.agent) ? o.agent[0]?.name : o.agent?.name;
+      const agentName = (o.agent_name as string) ?? "Unknown";
+      const agentId = agentName; // Use agent_name as key
       const custName = Array.isArray(o.customer) ? o.customer[0]?.name : o.customer?.name;
 
       if (!agentMap.has(agentId)) {
         agentMap.set(agentId, {
           agent_id: agentId,
-          agent_name: agentName ?? "Unknown",
+          agent_name: agentName,
           customers: [],
           total_qty: 0,
           total_commission: 0,
@@ -97,8 +97,10 @@ export default function CommissionsReportPage() {
 
       const agent = agentMap.get(agentId)!;
       const qty = o.quantity_liters ?? 0;
-      const commRate = o.commission_rate ?? 0;
-      const totalComm = qty * commRate;
+      const unitPrice = o.unit_price ?? 0;
+      const costToAgent = o.cost_to_agent ?? 0;
+      const commPerL = unitPrice - costToAgent;
+      const totalComm = qty * commPerL;
 
       // Find or create customer bucket
       let custBucket = agent.customers.find((c) => c.customer_name === (custName ?? ""));
@@ -113,9 +115,9 @@ export default function CommissionsReportPage() {
         order_date: o.order_date,
         customer_name: custName ?? "",
         quantity_liters: qty,
-        unit_price: o.unit_price ?? 0,
-        cost_price: o.cost_price ?? 0,
-        commission_rate: commRate,
+        unit_price: unitPrice,
+        cost_to_agent: costToAgent,
+        commission_per_liter: commPerL,
         total_commission: totalComm,
         dn_number: o.dn_number ?? "",
       });
@@ -143,8 +145,8 @@ export default function CommissionsReportPage() {
           { key: "customer_name", label: "Customer" },
           { key: "quantity_liters", label: "Qty (L)", format: "number" as const },
           { key: "unit_price", label: "Unit Price", format: "currency" as const },
-          { key: "cost_price", label: "Cost to Agent", format: "currency" as const },
-          { key: "commission_rate", label: "Comm/L", format: "currency" as const },
+          { key: "cost_to_agent", label: "Cost to Agent", format: "currency" as const },
+          { key: "commission_per_liter", label: "Comm/L", format: "currency" as const },
           { key: "total_commission", label: "Total Commission", format: "currency" as const },
           { key: "dn_number", label: "Receipt No." },
         ],
@@ -165,14 +167,14 @@ export default function CommissionsReportPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/reports">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <h1 className="text-xl font-bold text-[#1A3A5C]">Commission Report</h1>
+        <h1 className="text-xl font-bold text-primary">Commission Report</h1>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -182,7 +184,7 @@ export default function CommissionsReportPage() {
           </SelectTrigger>
           <SelectContent>
             {monthOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              <SelectItem key={o.value} value={o.value} label={o.label}>{o.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -205,13 +207,13 @@ export default function CommissionsReportPage() {
                   onClick={() => toggleExpand(agent.agent_id)}
                 >
                   <div>
-                    <p className="font-semibold text-[#1A3A5C]">{agent.agent_name}</p>
+                    <p className="font-semibold text-primary">{agent.agent_name}</p>
                     <p className="text-xs text-muted-foreground">
                       {agent.customers.length} customers | {agent.total_qty.toLocaleString()}L
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-green-600">
+                    <span className="font-bold text-status-approved-fg">
                       RM {agent.total_commission.toFixed(2)}
                     </span>
                     {expanded.has(agent.agent_id) ? (
@@ -225,7 +227,7 @@ export default function CommissionsReportPage() {
                 {expanded.has(agent.agent_id) && (
                   <div className="mt-3 border rounded-lg overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b">
+                      <thead className="bg-muted border-b">
                         <tr>
                           <th className="text-left p-2">Customer</th>
                           <th className="text-right p-2">Qty (L)</th>

@@ -72,14 +72,14 @@ export default function DriverWagesPage() {
   const totalTransport = orders.reduce((s, o) => s + (o.transport ?? 0), 0);
 
   return (
-    <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-4">
+    <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/driver">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <h1 className="text-xl font-bold text-[#1A3A5C]">My Wages</h1>
+        <h1 className="text-xl font-bold text-primary">My Wages</h1>
       </div>
 
       <Select value={month} onValueChange={(v) => v && setMonth(v)}>
@@ -88,7 +88,7 @@ export default function DriverWagesPage() {
         </SelectTrigger>
         <SelectContent>
           {monthOptions.map((o) => (
-            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            <SelectItem key={o.value} value={o.value} label={o.label}>{o.label}</SelectItem>
           ))}
         </SelectContent>
       </Select>
@@ -98,13 +98,13 @@ export default function DriverWagesPage() {
         <Card>
           <CardContent className="pt-4 text-center">
             <p className="text-xs text-muted-foreground">Wages</p>
-            <p className="text-lg font-bold text-green-600">RM {totalWages.toFixed(2)}</p>
+            <p className="text-lg font-bold text-status-approved-fg">RM {totalWages.toFixed(2)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 text-center">
             <p className="text-xs text-muted-foreground">Allowance</p>
-            <p className="text-lg font-bold text-blue-600">RM {totalAllowance.toFixed(2)}</p>
+            <p className="text-lg font-bold text-status-delivered-fg">RM {totalAllowance.toFixed(2)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -129,7 +129,7 @@ export default function DriverWagesPage() {
           ) : (
             <div className="border rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-muted border-b">
                   <tr>
                     <th className="text-left p-2">Date</th>
                     <th className="text-left p-2">Customer</th>
@@ -165,7 +165,7 @@ export default function DriverWagesPage() {
                       </td>
                     </tr>
                   ))}
-                  <tr className="bg-gray-50 font-bold">
+                  <tr className="bg-muted font-bold">
                     <td className="p-2" colSpan={3}>Total</td>
                     <td className="p-2 text-right text-xs font-mono">
                       {orders.reduce((s, o) => s + (o.quantity_liters ?? 0), 0).toLocaleString()}

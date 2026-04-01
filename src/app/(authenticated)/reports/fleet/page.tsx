@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { ArrowLeft, Download } from "lucide-react";
@@ -121,14 +121,14 @@ export default function FleetReportPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/reports">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <h1 className="text-xl font-bold text-[#1A3A5C]">Fleet Report</h1>
+        <h1 className="text-xl font-bold text-primary">Fleet Report</h1>
       </div>
 
       {/* Upcoming Renewals */}
@@ -145,7 +145,7 @@ export default function FleetReportPage() {
           ) : (
             <div className="border rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-muted border-b">
                   <tr>
                     <th className="text-left p-3">Vehicle</th>
                     <th className="text-left p-3">Document</th>
@@ -156,28 +156,19 @@ export default function FleetReportPage() {
                 </thead>
                 <tbody>
                   {renewals.map((r) => (
-                    <tr key={r.id} className="border-b hover:bg-gray-50">
+                    <tr key={r.id} className="border-b hover:bg-muted">
                       <td className="p-3">
-                        <Link href={`/fleet/${r.vehicle_id}`} className="font-medium text-[#1A3A5C] hover:underline">
+                        <Link href={`/fleet/${r.vehicle_id}`} className="font-medium text-primary hover:underline">
                           {r.plate_number}
                         </Link>
                       </td>
                       <td className="p-3">{r.doc_type}</td>
                       <td className="p-3 text-xs">{new Date(r.expiry_date).toLocaleDateString("en-MY")}</td>
-                      <td className={`p-3 text-right font-mono ${r.days_remaining < 0 ? "text-red-600 font-bold" : r.days_remaining <= 14 ? "text-yellow-600" : ""}`}>
+                      <td className={`p-3 text-right font-mono ${r.days_remaining < 0 ? "text-destructive font-bold" : r.days_remaining <= 14 ? "text-status-pending-fg" : ""}`}>
                         {r.days_remaining < 0 ? "EXPIRED" : r.days_remaining}
                       </td>
                       <td className="p-3">
-                        <Badge
-                          variant="secondary"
-                          className={
-                            r.status === "expired" ? "bg-red-100 text-red-700"
-                            : r.status === "expiring_soon" ? "bg-yellow-100 text-yellow-700"
-                            : "bg-green-100 text-green-700"
-                          }
-                        >
-                          {r.status === "expiring_soon" ? "Expiring" : r.status}
-                        </Badge>
+                        <StatusBadge status={r.status} type="fleet" />
                       </td>
                     </tr>
                   ))}
@@ -199,7 +190,7 @@ export default function FleetReportPage() {
           ) : (
             <div className="border rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-muted border-b">
                   <tr>
                     <th className="text-left p-3">Vehicle</th>
                     <th className="text-right p-3">This Month</th>
@@ -208,13 +199,13 @@ export default function FleetReportPage() {
                 </thead>
                 <tbody>
                   {costs.map((c) => (
-                    <tr key={c.plate_number} className="border-b hover:bg-gray-50">
+                    <tr key={c.plate_number} className="border-b hover:bg-muted">
                       <td className="p-3 font-medium">{c.plate_number}</td>
                       <td className="p-3 text-right font-mono">RM {c.this_month.toFixed(2)}</td>
                       <td className="p-3 text-right font-mono">RM {c.last_3_months.toFixed(2)}</td>
                     </tr>
                   ))}
-                  <tr className="bg-gray-50 font-bold">
+                  <tr className="bg-muted font-bold">
                     <td className="p-3">TOTAL</td>
                     <td className="p-3 text-right font-mono">RM {costs.reduce((s, c) => s + c.this_month, 0).toFixed(2)}</td>
                     <td className="p-3 text-right font-mono">RM {costs.reduce((s, c) => s + c.last_3_months, 0).toFixed(2)}</td>

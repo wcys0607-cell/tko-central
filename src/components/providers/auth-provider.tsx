@@ -66,13 +66,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event: string, session: { user: import("@supabase/supabase-js").User } | null) => {
       if (session?.user) {
-        setUser(session.user);
-        const { data } = await supabase
-          .from("drivers")
-          .select("id, name, email, phone, role, is_active")
-          .eq("auth_user_id", session.user.id)
-          .single();
-        if (data) setDriverProfile(data as DriverProfile);
+        // Only re-fetch profile if user changed (not on token refresh)
+        setUser((prev) => {
+          if (prev?.id === session.user.id) return prev;
+          // Different user — fetch profile
+          supabase
+            .from("drivers")
+            .select("id, name, email, phone, role, is_active")
+            .eq("auth_user_id", session.user.id)
+            .single()
+            .then(({ data }: { data: DriverProfile | null }) => {
+              if (data) setDriverProfile(data as DriverProfile);
+            });
+          return session.user;
+        });
       } else {
         setUser(null);
         setDriverProfile(null);
@@ -84,6 +91,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signOut() {
     await supabase.auth.signOut();
+    // Clear cached role cookie
+    document.cookie = "tko-role=; path=/; max-age=0";
     setUser(null);
     setDriverProfile(null);
     router.push("/login");

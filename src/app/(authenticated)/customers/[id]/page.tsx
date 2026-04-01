@@ -107,7 +107,7 @@ export default function CustomerDetailPage({
           </Button>
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-bold text-[#1A3A5C]">{customer.name}</h1>
+          <h1 className="text-xl font-bold text-primary">{customer.name}</h1>
           {customer.short_name && (
             <p className="text-sm text-muted-foreground">{customer.short_name}</p>
           )}

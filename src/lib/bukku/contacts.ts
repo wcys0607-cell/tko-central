@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
-import { getBukkuConfig, bukkuFetchAll } from "./client";
+import { getBukkuConfig, bukkuFetch, bukkuFetchAll } from "./client";
 
-/** Actual Bukku contact shape from their API */
+/** Bukku contact shape from the list endpoint */
 interface BukkuContact {
   id: number;
   legal_name: string | null;
@@ -36,6 +36,22 @@ interface BukkuContact {
   created_at: string | null;
   updated_at: string | null;
   [key: string]: unknown;
+}
+
+/** Bukku contact detail (individual endpoint) includes addresses */
+interface BukkuContactDetail extends BukkuContact {
+  addresses?: {
+    id: number;
+    name: string | null;
+    street: string | null;
+    city: string | null;
+    state: string | null;
+    postcode: string | null;
+    country_code: string | null;
+    text: string | null;
+    is_default_billing: boolean;
+    is_default_shipping: boolean;
+  }[];
 }
 
 interface SyncResult {
@@ -73,6 +89,28 @@ function mapBukkuToCustomer(contact: BukkuContact, contactName: string) {
   return fields;
 }
 
+/** Fetch individual contact detail to get full addresses array */
+async function fetchContactAddresses(
+  config: { baseUrl: string; token: string; subdomain: string },
+  contactId: number
+): Promise<string[]> {
+  const res = await bukkuFetch<{ contact: BukkuContactDetail }>(config, {
+    path: `/contacts/${contactId}`,
+  });
+  if (!res.ok || !res.data?.contact?.addresses) return [];
+
+  return res.data.contact.addresses
+    .map((a) => {
+      // Use the address name as label if available, otherwise use the text
+      const label = a.name ? `${a.name}` : null;
+      const text = a.text?.trim();
+      if (!text) return null;
+      // Format: "Label - Full Address" or just "Full Address"
+      return label ? `${label} - ${text}` : text;
+    })
+    .filter((a): a is string => a != null && a.length > 0);
+}
+
 export async function syncBukkuContacts(): Promise<SyncResult> {
   const config = await getBukkuConfig();
   if (!config) {
@@ -84,7 +122,7 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // Fetch ALL contacts from Bukku
+  // Fetch ALL contacts from Bukku (list endpoint)
   const bukkuRes = await bukkuFetchAll<BukkuContact>(config, "/contacts", "contacts");
   if (!bukkuRes.ok) {
     return { matched: 0, created: 0, skipped: 0, failed: 0, total_fetched: 0, errors: [bukkuRes.error ?? "Failed to fetch contacts"] };
@@ -92,11 +130,12 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
 
   const result: SyncResult = { matched: 0, created: 0, skipped: 0, failed: 0, total_fetched: bukkuRes.data.length, errors: [] };
 
-  // Get all existing customers in one query
+  // Get all existing customers (default Supabase limit is 1000, so override)
   const { data: customers } = await supabase
     .from("customers")
     .select("id, name, bukku_contact_id")
-    .order("name");
+    .order("name")
+    .limit(10000);
 
   const customersByName = new Map<string, string>();
   const customersByBukkuId = new Map<number, string>();
@@ -105,82 +144,51 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
     if (c.bukku_contact_id) customersByBukkuId.set(c.bukku_contact_id, c.id);
   }
 
-  // Get all existing addresses in one query for dedup
-  const { data: allAddresses } = await supabase
-    .from("customer_addresses")
-    .select("customer_id, address");
-  const existingAddressSet = new Set<string>();
-  for (const a of allAddresses ?? []) {
-    existingAddressSet.add(`${a.customer_id}::${a.address.toLowerCase().trim()}`);
-  }
+  // Filter to active customers only
+  const activeCustomers = bukkuRes.data.filter((contact) => {
+    if (!contact.types || !contact.types.includes("customer") || contact.is_archived) {
+      result.skipped++;
+      return false;
+    }
+    const name = (contact.legal_name || contact.display_name || contact.company_name || "").trim();
+    if (!name) {
+      result.skipped++;
+      return false;
+    }
+    return true;
+  });
 
   // Prepare batch arrays
   const updateBatch: { id: string; fields: Record<string, unknown> }[] = [];
   const createBatch: Record<string, unknown>[] = [];
-  const addressBatch: { customer_id: string; address: string; source: string }[] = [];
+  // Map: customer_id -> bukku contact id (for address fetching)
+  const customerBukkuIds = new Map<string, number>();
+  const newContactBukkuIds = new Map<string, number>(); // contactName -> bukku id
 
-  // Temporary map for new contacts that need addresses after creation
-  const newContactAddresses = new Map<string, string[]>(); // contactName -> addresses
-
-  // Filter to customers only and prepare batches
-  for (const contact of bukkuRes.data) {
-    if (!contact.types || !contact.types.includes("customer")) {
-      result.skipped++;
-      continue;
-    }
-
+  for (const contact of activeCustomers) {
     const contactName = (contact.legal_name || contact.display_name || contact.company_name || "").trim();
-    if (!contactName) {
-      result.skipped++;
-      continue;
-    }
-
     const fields = mapBukkuToCustomer(contact, contactName);
 
-    // Collect addresses for this contact
-    const addresses: string[] = [];
-    if (contact.billing_party) addresses.push(contact.billing_party.trim());
-    if (contact.shipping_party) addresses.push(contact.shipping_party.trim());
-    const uniqueAddresses = [...new Set(addresses.filter(a => a.length > 0))];
-
-    // Check if already linked by bukku_contact_id
     const existingLinkedId = customersByBukkuId.get(contact.id);
     if (existingLinkedId) {
       updateBatch.push({ id: existingLinkedId, fields });
-      // Queue addresses
-      for (const addr of uniqueAddresses) {
-        const key = `${existingLinkedId}::${addr.toLowerCase().trim()}`;
-        if (!existingAddressSet.has(key)) {
-          addressBatch.push({ customer_id: existingLinkedId, address: addr, source: "bukku" });
-          existingAddressSet.add(key); // prevent duplicates within batch
-        }
-      }
+      customerBukkuIds.set(existingLinkedId, contact.id);
       result.matched++;
       continue;
     }
 
-    // Try to match by name
     const existingId = customersByName.get(contactName.toLowerCase());
     if (existingId) {
       updateBatch.push({ id: existingId, fields });
-      for (const addr of uniqueAddresses) {
-        const key = `${existingId}::${addr.toLowerCase().trim()}`;
-        if (!existingAddressSet.has(key)) {
-          addressBatch.push({ customer_id: existingId, address: addr, source: "bukku" });
-          existingAddressSet.add(key);
-        }
-      }
+      customerBukkuIds.set(existingId, contact.id);
       result.matched++;
     } else {
-      // New customer
       createBatch.push({
         name: contactName.toUpperCase(),
         ...fields,
         is_active: true,
       });
-      if (uniqueAddresses.length > 0) {
-        newContactAddresses.set(contactName.toUpperCase(), uniqueAddresses);
-      }
+      newContactBukkuIds.set(contactName.toUpperCase(), contact.id);
       result.created++;
     }
   }
@@ -213,23 +221,40 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
       result.failed += chunk.length;
       result.errors.push(`Batch create: ${error.message}`);
     } else {
-      // Queue addresses for newly created customers
       for (const nc of newCustomers ?? []) {
-        const addrs = newContactAddresses.get(nc.name);
-        if (addrs) {
-          for (const addr of addrs) {
-            const key = `${nc.id}::${addr.toLowerCase().trim()}`;
-            if (!existingAddressSet.has(key)) {
-              addressBatch.push({ customer_id: nc.id, address: addr, source: "bukku" });
-              existingAddressSet.add(key);
-            }
-          }
-        }
+        const bukkuId = newContactBukkuIds.get(nc.name);
+        if (bukkuId) customerBukkuIds.set(nc.id, bukkuId);
       }
     }
   }
 
-  // Insert addresses in batches of 100
+  // Now fetch addresses for all customers from individual contact endpoints
+  // Delete all existing bukku-sourced addresses first (replace on each sync)
+  const allCustomerIds = [...customerBukkuIds.keys()];
+  for (let i = 0; i < allCustomerIds.length; i += 100) {
+    const chunk = allCustomerIds.slice(i, i + 100);
+    await supabase.from("customer_addresses").delete().in("customer_id", chunk).eq("source", "bukku");
+  }
+
+  // Fetch addresses in parallel batches of 10 (to avoid overwhelming the API)
+  const addressBatch: { customer_id: string; address: string; source: string }[] = [];
+  const entries = [...customerBukkuIds.entries()];
+  for (let i = 0; i < entries.length; i += 10) {
+    const chunk = entries.slice(i, i + 10);
+    const results = await Promise.all(
+      chunk.map(async ([customerId, bukkuId]) => {
+        const addresses = await fetchContactAddresses(config, bukkuId);
+        return { customerId, addresses };
+      })
+    );
+    for (const { customerId, addresses } of results) {
+      for (const addr of addresses) {
+        addressBatch.push({ customer_id: customerId, address: addr, source: "bukku" });
+      }
+    }
+  }
+
+  // Insert all addresses
   for (let i = 0; i < addressBatch.length; i += 100) {
     const chunk = addressBatch.slice(i, i + 100);
     await supabase.from("customer_addresses").insert(chunk);

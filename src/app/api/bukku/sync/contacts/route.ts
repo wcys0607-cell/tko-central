@@ -4,7 +4,7 @@ import { syncBukkuContacts } from "@/lib/bukku/contacts";
 import { createClient as createAdmin } from "@supabase/supabase-js";
 
 // Allow up to 60 seconds for this sync endpoint
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST() {
   const supabase = await createClient();

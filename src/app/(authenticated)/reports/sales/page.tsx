@@ -110,14 +110,14 @@ export default function SalesReportPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/reports">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <h1 className="text-xl font-bold text-[#1A3A5C]">Sales Summary</h1>
+        <h1 className="text-xl font-bold text-primary">Sales Summary</h1>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -140,7 +140,7 @@ export default function SalesReportPage() {
               key={g}
               variant={groupBy === g ? "default" : "outline"}
               size="sm"
-              className={groupBy === g ? "bg-[#1A3A5C]" : ""}
+              className={groupBy === g ? "bg-primary" : ""}
               onClick={() => setGroupBy(g)}
             >
               {g.charAt(0).toUpperCase() + g.slice(1)}
@@ -166,7 +166,7 @@ export default function SalesReportPage() {
                 <XAxis dataKey="group" tick={{ fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={60} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip formatter={(value) => [`RM ${Number(value ?? 0).toFixed(0)}`, "Revenue"]} />
-                <Bar dataKey="revenue" fill="#1A3A5C" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -174,7 +174,7 @@ export default function SalesReportPage() {
           {/* Table */}
           <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-muted border-b">
                 <tr>
                   <th className="text-left p-3">{groupBy.charAt(0).toUpperCase() + groupBy.slice(1)}</th>
                   <th className="text-right p-3">Orders</th>
@@ -184,14 +184,14 @@ export default function SalesReportPage() {
               </thead>
               <tbody>
                 {data.map((r) => (
-                  <tr key={r.group} className="border-b hover:bg-gray-50">
+                  <tr key={r.group} className="border-b hover:bg-muted">
                     <td className="p-3 font-medium">{r.group}</td>
                     <td className="p-3 text-right">{r.orders}</td>
                     <td className="p-3 text-right font-mono">{r.qty.toLocaleString()}</td>
                     <td className="p-3 text-right font-mono">{r.revenue.toFixed(2)}</td>
                   </tr>
                 ))}
-                <tr className="bg-gray-50 font-bold">
+                <tr className="bg-muted font-bold">
                   <td className="p-3">TOTAL</td>
                   <td className="p-3 text-right">{data.reduce((s, r) => s + r.orders, 0)}</td>
                   <td className="p-3 text-right font-mono">{data.reduce((s, r) => s + r.qty, 0).toLocaleString()}</td>

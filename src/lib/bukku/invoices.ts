@@ -9,6 +9,7 @@ interface BukkuInvoice {
   balance?: number;
   date?: string;
   term_items?: { date: string; amount: number; balance: number }[];
+  payments?: { number?: string; date?: string; amount?: number }[];
 }
 
 interface InvoiceSyncResult {
@@ -33,7 +34,7 @@ export async function syncInvoiceStatus(): Promise<InvoiceSyncResult> {
   // Get all orders with bukku_invoice_id
   const { data: orders } = await supabase
     .from("orders")
-    .select("id, bukku_invoice_id, customer_id")
+    .select("id, bukku_invoice_id, customer_id, invoice_number, receipt_no")
     .not("bukku_invoice_id", "is", null);
 
   if (!orders || orders.length === 0) {
@@ -82,9 +83,23 @@ export async function syncInvoiceStatus(): Promise<InvoiceSyncResult> {
       }
     }
 
+    // Build update payload — sync invoice number and receipt number from Bukku
+    const updatePayload: Record<string, unknown> = { bukku_payment_status: paymentStatus };
+
+    // Sync invoice number if finalized (has a number and not draft)
+    if (invoice.number && invoice.status !== "draft" && !order.invoice_number) {
+      updatePayload.invoice_number = invoice.number;
+    }
+
+    // Sync receipt number from payments
+    if (invoice.payments && invoice.payments.length > 0 && !order.receipt_no) {
+      const receiptNos = invoice.payments.map((p) => p.number).filter(Boolean).join(", ");
+      if (receiptNos) updatePayload.receipt_no = receiptNos;
+    }
+
     await supabase
       .from("orders")
-      .update({ bukku_payment_status: paymentStatus })
+      .update(updatePayload)
       .eq("id", order.id);
 
     result.updated++;
@@ -93,25 +108,68 @@ export async function syncInvoiceStatus(): Promise<InvoiceSyncResult> {
   return result;
 }
 
-interface CreateInvoiceResult {
+interface PushResult {
   ok: boolean;
-  bukkuInvoiceId?: number;
+  bukkuId?: number;
+  bukkuNumber?: string;
   error?: string;
 }
 
-/** Create a Bukku invoice from an approved order */
-export async function createBukkuInvoice(orderId: string): Promise<CreateInvoiceResult> {
-  const config = await getBukkuConfig();
-  if (!config) {
-    return { ok: false, error: "Bukku not configured" };
+type PushType = "sales_order" | "delivery_order";
+
+/** Build line items from an order (shared by SO and DO push) */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function buildLineItems(orderId: string, order: Record<string, unknown>, supabase: any) {
+  const { data: orderItems } = await supabase
+    .from("order_items")
+    .select("*, product:product_id(id,name,bukku_product_id,sst_rate)")
+    .eq("order_id", orderId)
+    .order("sort_order");
+
+  const items = (orderItems ?? []) as { product_id: string | null; quantity_liters: number; unit_price: number; sst_rate: number; product: { id: string; name: string; bukku_product_id: number | null; sst_rate: number | null } | null }[];
+
+  if (items.length > 0) {
+    const unlinked = items.filter((i) => !i.product?.bukku_product_id);
+    if (unlinked.length > 0) {
+      return { error: `Product "${unlinked[0].product?.name ?? "unknown"}" not linked to Bukku` };
+    }
+    return {
+      lineItems: items.map((i) => ({
+        product_id: i.product!.bukku_product_id!,
+        description: `${i.product!.name} delivery to ${(order.destination as string) || ""}`.trim(),
+        quantity: i.quantity_liters ?? 0,
+        unit_price: i.unit_price ?? 0,
+        tax_rate: i.sst_rate ?? 0,
+      })),
+    };
   }
+
+  // Fallback: legacy single-product
+  const product = order.product as { name: string; bukku_product_id: number | null; sst_rate: number | null } | null;
+  if (!product?.bukku_product_id) {
+    return { error: `Product "${product?.name}" not linked to Bukku` };
+  }
+  return {
+    lineItems: [{
+      product_id: product.bukku_product_id,
+      description: `${product.name} delivery to ${(order.destination as string) || ""}`.trim(),
+      quantity: (order.quantity_liters as number) ?? 0,
+      unit_price: (order.unit_price as number) ?? 0,
+      tax_rate: product.sst_rate ?? 0,
+    }],
+  };
+}
+
+/** Push order to Bukku as Sales Order or Delivery Order */
+export async function pushToBukku(orderId: string, pushType: PushType): Promise<PushResult> {
+  const config = await getBukkuConfig();
+  if (!config) return { ok: false, error: "Bukku not configured" };
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // Load order with customer and product
   const { data: order } = await supabase
     .from("orders")
     .select("*, customer:customers!orders_customer_id_fkey(*), product:products!orders_product_id_fkey(*)")
@@ -119,76 +177,70 @@ export async function createBukkuInvoice(orderId: string): Promise<CreateInvoice
     .single();
 
   if (!order) return { ok: false, error: "Order not found" };
-  if (order.bukku_invoice_id) return { ok: false, error: "Invoice already created in Bukku" };
 
-  // Verify customer has Bukku contact ID
+  // Check if already pushed
+  if (pushType === "sales_order" && order.bukku_so_id) {
+    return { ok: false, error: "Sales Order already pushed to Bukku" };
+  }
+  if (pushType === "delivery_order" && order.bukku_do_id) {
+    return { ok: false, error: "Delivery Order already pushed to Bukku" };
+  }
+
   if (!order.customer?.bukku_contact_id) {
-    await supabase
-      .from("orders")
-      .update({ bukku_sync_status: "error" })
-      .eq("id", orderId);
+    await supabase.from("orders").update({ bukku_sync_status: "error" }).eq("id", orderId);
     return { ok: false, error: `Customer "${order.customer?.name}" not linked to Bukku` };
   }
 
-  // Verify product has Bukku product ID
-  if (!order.product?.bukku_product_id) {
-    await supabase
-      .from("orders")
-      .update({ bukku_sync_status: "error" })
-      .eq("id", orderId);
-    return { ok: false, error: `Product "${order.product?.name}" not linked to Bukku` };
+  const result = await buildLineItems(orderId, order, supabase);
+  if (result.error) {
+    await supabase.from("orders").update({ bukku_sync_status: "error" }).eq("id", orderId);
+    return { ok: false, error: result.error };
   }
 
-  // Calculate due date
   const orderDate = new Date(order.order_date);
   const paymentTerms = order.customer?.payment_terms ?? 30;
   const dueDate = new Date(orderDate);
   dueDate.setDate(dueDate.getDate() + paymentTerms);
 
-  // Build invoice payload
   const payload = {
     contact_id: order.customer.bukku_contact_id,
     date: order.order_date,
     due_date: dueDate.toISOString().split("T")[0],
-    reference: order.dn_number || order.invoice_number || null,
-    line_items: [
-      {
-        product_id: order.product.bukku_product_id,
-        description: `${order.product.name} delivery to ${order.destination || ""}`.trim(),
-        quantity: order.quantity_liters ?? 0,
-        unit_price: order.unit_price ?? 0,
-        tax_rate: order.product.sst_rate ?? 0,
-      },
-    ],
+    line_items: result.lineItems,
+  };
+
+  // Bukku API endpoints
+  const endpointMap: Record<PushType, string> = {
+    sales_order: "/sales/orders",
+    delivery_order: "/sales/delivery_notes",
   };
 
   const res = await bukkuFetch<{ transaction: { id: number; number?: string } }>(config, {
     method: "POST",
-    path: "/sales/invoices",
+    path: endpointMap[pushType],
     body: payload,
   });
 
   if (!res.ok) {
-    await supabase
-      .from("orders")
-      .update({ bukku_sync_status: "error" })
-      .eq("id", orderId);
+    await supabase.from("orders").update({ bukku_sync_status: "error" }).eq("id", orderId);
     return { ok: false, error: res.error };
   }
 
-  const invoiceId = res.data?.transaction?.id;
-  if (!invoiceId) {
-    return { ok: false, error: "No invoice ID returned" };
+  const bukkuId = res.data?.transaction?.id;
+  const bukkuNumber = res.data?.transaction?.number;
+  if (!bukkuId) return { ok: false, error: "No ID returned from Bukku" };
+
+  // Update order with Bukku IDs
+  const updatePayload: Record<string, unknown> = { bukku_sync_status: "synced" };
+  if (pushType === "sales_order") {
+    updatePayload.bukku_so_id = bukkuId;
+  } else {
+    updatePayload.bukku_do_id = bukkuId;
+    // Auto-fill DN number from Bukku Delivery Order number
+    if (bukkuNumber) updatePayload.dn_number = bukkuNumber;
   }
 
-  // Update order with Bukku invoice ID
-  await supabase
-    .from("orders")
-    .update({
-      bukku_invoice_id: invoiceId,
-      bukku_sync_status: "synced",
-    })
-    .eq("id", orderId);
+  await supabase.from("orders").update(updatePayload).eq("id", orderId);
 
-  return { ok: true, bukkuInvoiceId: invoiceId };
+  return { ok: true, bukkuId, bukkuNumber };
 }

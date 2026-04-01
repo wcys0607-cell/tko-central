@@ -139,8 +139,8 @@ export default function DriverChecklistPage() {
   if (success) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
-        <CheckCircle2 className="w-16 h-16 text-green-500 mb-4" />
-        <h2 className="text-2xl font-bold text-green-700 mb-2">Checklist Submitted!</h2>
+        <CheckCircle2 className="w-16 h-16 text-status-approved-fg mb-4" />
+        <h2 className="text-2xl font-bold text-status-approved-fg mb-2">Checklist Submitted!</h2>
         <p className="text-muted-foreground mb-6">Your daily inspection has been recorded.</p>
         <div className="flex gap-3">
           <Button onClick={() => {
@@ -164,14 +164,14 @@ export default function DriverChecklistPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-lg mx-auto space-y-4">
+    <div className="p-4 md:p-6 max-w-lg mx-auto space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/driver">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <h1 className="text-xl font-bold text-[#1A3A5C]">Daily Checklist</h1>
+        <h1 className="text-xl font-bold text-primary">Daily Checklist</h1>
       </div>
 
       {/* Vehicle Selector */}
@@ -187,8 +187,8 @@ export default function DriverChecklistPage() {
                 onClick={() => setSelectedVehicle(v.id)}
                 className={`p-3 rounded-lg border-2 text-left transition-colors ${
                   selectedVehicle === v.id
-                    ? "border-[#1A3A5C] bg-[#1A3A5C]/5"
-                    : "border-gray-200 hover:border-gray-300"
+                    ? "border-primary bg-primary/5"
+                    : "border-muted hover:border-muted-foreground/30"
                 }`}
               >
                 <p className="font-bold text-sm">{v.plate_number}</p>
@@ -222,25 +222,25 @@ export default function DriverChecklistPage() {
         </CardHeader>
         <CardContent className="space-y-2">
           {CHECKLIST_ITEMS.map((item) => (
-            <div key={item.key} className="flex items-center justify-between p-2 rounded-lg bg-gray-50">
+            <div key={item.key} className="flex items-center justify-between p-2 rounded-lg bg-muted">
               <span className="font-medium">{item.label}</span>
               <div className="flex gap-2">
                 <button
                   onClick={() => setChecks((p) => ({ ...p, [item.key]: true }))}
-                  className={`p-2 rounded-lg transition-colors ${
+                  className={`p-2 rounded-lg transition-colors h-11 w-11 flex items-center justify-center ${
                     checks[item.key]
-                      ? "bg-green-500 text-white"
-                      : "bg-gray-200 text-gray-500"
+                      ? "bg-status-approved-fg text-white"
+                      : "bg-muted text-muted-foreground"
                   }`}
                 >
                   <CheckCircle2 className="w-6 h-6" />
                 </button>
                 <button
                   onClick={() => setChecks((p) => ({ ...p, [item.key]: false }))}
-                  className={`p-2 rounded-lg transition-colors ${
+                  className={`p-2 rounded-lg transition-colors h-11 w-11 flex items-center justify-center ${
                     !checks[item.key]
-                      ? "bg-red-500 text-white"
-                      : "bg-gray-200 text-gray-500"
+                      ? "bg-destructive text-white"
+                      : "bg-muted text-muted-foreground"
                   }`}
                 >
                   <XCircle className="w-6 h-6" />
@@ -253,9 +253,9 @@ export default function DriverChecklistPage() {
 
       {/* Defect Section */}
       {hasDefect && (
-        <Card className="border-red-300 bg-red-50">
+        <Card className="border-destructive/30 bg-destructive/10">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base text-red-700">Defect Report</CardTitle>
+            <CardTitle className="text-base text-destructive">Defect Report</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <textarea
@@ -266,7 +266,7 @@ export default function DriverChecklistPage() {
             />
             <div>
               <label className="flex items-center gap-2 cursor-pointer">
-                <div className="flex items-center gap-2 bg-white border rounded-lg px-4 py-3 hover:bg-gray-50">
+                <div className="flex items-center gap-2 bg-white border rounded-lg px-4 py-3 hover:bg-muted">
                   <Camera className="w-5 h-5" />
                   <span className="text-sm font-medium">
                     {defectPhoto ? defectPhoto.name : "Take Photo"}
@@ -276,7 +276,7 @@ export default function DriverChecklistPage() {
                   type="file"
                   accept="image/*"
                   capture="environment"
-                  className="hidden"
+                  className="sr-only"
                   onChange={(e) => setDefectPhoto(e.target.files?.[0] ?? null)}
                 />
               </label>
@@ -286,12 +286,12 @@ export default function DriverChecklistPage() {
       )}
 
       {error && (
-        <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</p>
+        <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</p>
       )}
 
       <Button
         onClick={handleSubmit}
-        className="w-full h-14 text-lg bg-green-600 hover:bg-green-700"
+        className="w-full h-14 text-lg bg-status-approved-fg hover:bg-status-approved-fg/90"
         disabled={saving}
       >
         {saving ? "Submitting..." : "Submit Checklist"}

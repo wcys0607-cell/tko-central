@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { toast } from "sonner";
 
 export default function NewTransactionPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -117,6 +118,7 @@ export default function NewTransactionPage() {
       });
 
     if (insertError) {
+      toast.error(insertError.message);
       setError(insertError.message);
       setSaving(false);
       return;
@@ -146,18 +148,19 @@ export default function NewTransactionPage() {
       }
     }
 
+    toast.success("Transaction saved");
     router.push("/stock/transactions");
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-2xl">
+    <div className="p-4 md:p-6 max-w-2xl animate-fade-in">
       <div className="flex items-center gap-2 mb-6">
         <Link href="/stock/transactions">
           <Button variant="ghost" size="icon">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold text-[#1A3A5C]">
+        <h1 className="text-2xl font-bold text-primary">
           New Stock Transaction
         </h1>
       </div>
@@ -185,10 +188,10 @@ export default function NewTransactionPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="purchase">Purchase</SelectItem>
-                    <SelectItem value="sale">Sale</SelectItem>
-                    <SelectItem value="transfer">Transfer</SelectItem>
-                    <SelectItem value="adjustment">Adjustment</SelectItem>
+                    <SelectItem value="purchase" label="Purchase">Purchase</SelectItem>
+                    <SelectItem value="sale" label="Sale">Sale</SelectItem>
+                    <SelectItem value="transfer" label="Transfer">Transfer</SelectItem>
+                    <SelectItem value="adjustment" label="Adjustment">Adjustment</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -206,11 +209,11 @@ export default function NewTransactionPage() {
                 </label>
                 <Select value={sourceId} onValueChange={(v) => v && setSourceId(v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select source" />
+                    <SelectValue placeholder="Select source">{(v: string | null) => { if (!v) return "Select source"; return locations.find((l) => l.id === v)?.name || locations.find((l) => l.id === v)?.code || v; }}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {locations.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
+                      <SelectItem key={l.id} value={l.id} label={l.name || l.code}>
                         {l.name || l.code} ({l.current_balance?.toLocaleString() ?? 0}L)
                       </SelectItem>
                     ))}
@@ -231,11 +234,11 @@ export default function NewTransactionPage() {
                 </label>
                 <Select value={destId} onValueChange={(v) => v && setDestId(v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select destination" />
+                    <SelectValue placeholder="Select destination">{(v: string | null) => { if (!v) return "Select destination"; return locations.find((l) => l.id === v)?.name || locations.find((l) => l.id === v)?.code || v; }}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {locations.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
+                      <SelectItem key={l.id} value={l.id} label={l.name || l.code}>
                         {l.name || l.code} ({l.current_balance?.toLocaleString() ?? 0}L)
                       </SelectItem>
                     ))}
@@ -260,7 +263,7 @@ export default function NewTransactionPage() {
                 <label className="text-sm font-medium">
                   Price per Liter{" "}
                   {txType === "purchase" && (
-                    <span className="text-red-500">*</span>
+                    <span className="text-destructive">*</span>
                   )}
                 </label>
                 <Input
@@ -281,8 +284,8 @@ export default function NewTransactionPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Company">Company</SelectItem>
-                    <SelectItem value="Partner">Partner</SelectItem>
+                    <SelectItem value="Company" label="Company">Company</SelectItem>
+                    <SelectItem value="Partner" label="Partner">Partner</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -316,7 +319,7 @@ export default function NewTransactionPage() {
             </div>
 
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
+              <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
                 {error}
               </p>
             )}
@@ -324,7 +327,7 @@ export default function NewTransactionPage() {
             <div className="flex gap-3">
               <Button
                 type="submit"
-                className="bg-[#1A3A5C] hover:bg-[#15304D]"
+                className="bg-primary hover:bg-primary/90"
                 disabled={saving}
               >
                 {saving ? "Saving..." : "Save Transaction"}
