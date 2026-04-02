@@ -5,8 +5,8 @@ export const metadata: Metadata = {
   title: "TKO Central",
   description: "Top Kim Oil Operations Management System",
   icons: {
-    icon: "/logo.jpeg",
-    apple: "/logo.jpeg",
+    icon: "/logo.png",
+    apple: "/apple-icon.png",
   },
 };
 

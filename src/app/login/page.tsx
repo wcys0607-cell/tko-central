@@ -69,11 +69,11 @@ export default function LoginPage() {
         <CardHeader className="text-center space-y-4">
           <div className="mx-auto flex items-center justify-center">
             <Image
-              src="/logo.jpeg"
+              src="/logo.png"
               alt="Top Kim Oil"
               width={80}
               height={80}
-              className="rounded-xl object-contain shadow-sm"
+              className="rounded-full object-contain shadow-sm"
             />
           </div>
           <div>

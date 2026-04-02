@@ -41,11 +41,11 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <Link href="/" className="flex items-center gap-3">
           <Image
-            src="/logo.jpeg"
+            src="/logo.png"
             alt="Top Kim Oil"
             width={32}
             height={32}
-            className="rounded-md object-contain"
+            className="rounded-full object-contain"
           />
           <div>
             <h1 className="text-sm font-bold leading-tight">
