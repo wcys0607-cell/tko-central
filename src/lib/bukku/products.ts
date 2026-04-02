@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { getBukkuConfig, bukkuFetchAll } from "./client";
+import { getBukkuConfig, bukkuFetchAll, bukkuFetch } from "./client";
 
 interface BukkuProduct {
   id: number;
@@ -12,6 +12,7 @@ interface BukkuProduct {
   is_buying?: boolean;
   is_archived?: boolean;
   classification_code?: string;
+  unit_label?: string;
 }
 
 interface SyncResult {
@@ -54,14 +55,32 @@ export async function syncBukkuProducts(): Promise<SyncResult> {
   }
 
   for (const product of bukkuRes.data) {
-    // Skip if already linked
+    const productName = (product.name || "").trim();
+    if (!productName) continue;
+
+    // Fetch individual product detail to get unit label
+    const detailRes = await bukkuFetch<{ product: { unit_label?: string; product_unit_label?: string; units?: { label?: string }[] } }>(config, {
+      path: `/products/${product.id}`,
+    });
+    const detail = detailRes.data?.product;
+    const unitLabel = detail?.unit_label ?? detail?.product_unit_label ?? detail?.units?.[0]?.label ?? null;
+
+    // Already linked — just update unit
     if (productsByBukkuId.has(product.id)) {
+      if (unitLabel) {
+        // Find product by bukku_product_id and update unit
+        const { data: existing } = await supabase
+          .from("products")
+          .select("id")
+          .eq("bukku_product_id", product.id)
+          .single();
+        if (existing) {
+          await supabase.from("products").update({ unit: unitLabel }).eq("id", existing.id);
+        }
+      }
       result.matched++;
       continue;
     }
-
-    const productName = (product.name || "").trim();
-    if (!productName) continue;
 
     const existing = productsByName.get(productName.toLowerCase());
 
@@ -73,6 +92,7 @@ export async function syncBukkuProducts(): Promise<SyncResult> {
       if (!existing.classification_code && product.classification_code) {
         updates.classification_code = product.classification_code;
       }
+      if (unitLabel) updates.unit = unitLabel;
 
       const { error } = await supabase
         .from("products")
@@ -92,6 +112,7 @@ export async function syncBukkuProducts(): Promise<SyncResult> {
         default_price: product.sale_price ?? null,
         classification_code: product.classification_code ?? null,
         bukku_product_id: product.id,
+        unit: unitLabel ?? "Liters",
         is_active: true,
       });
 

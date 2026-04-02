@@ -1,12 +1,22 @@
 import { createClient } from "@/lib/supabase/server";
 
+type SenderType = "default" | "driver";
+
 interface SendWhatsAppOptions {
   phone: string;
   message: string;
   referenceId?: string;
   type?: string;
   recipientName?: string;
+  /** Which OnSend sender to use. Defaults to "default". */
+  sender?: SenderType;
 }
+
+/** Map sender type to config key for sender number */
+const SENDER_CONFIG_KEY: Record<SenderType, string> = {
+  default: "ONSEND_DEFAULT_SENDER",
+  driver: "ONSEND_DRIVER_SENDER",
+};
 
 export async function sendWhatsApp({
   phone,
@@ -14,40 +24,54 @@ export async function sendWhatsApp({
   referenceId,
   type = "general",
   recipientName,
+  sender = "default",
 }: SendWhatsAppOptions): Promise<{ success: boolean; error?: string }> {
   const supabase = await createClient();
 
-  // Fetch config from app_config
+  // Fetch all OnSend config
   const { data: configs } = await supabase
     .from("app_config")
     .select("key, value")
-    .in("key", ["ONSEND_API_TOKEN", "ONSEND_INSTANCE_ID"]);
+    .like("key", "ONSEND_%");
 
-  const configMap: Record<string, string> = {};
+  const cfg: Record<string, string> = {};
   for (const row of configs ?? []) {
-    if (row.key && row.value) configMap[row.key] = row.value;
+    if (row.key && row.value) cfg[row.key] = row.value;
   }
 
-  const token = configMap["ONSEND_API_TOKEN"];
-  const instanceId = configMap["ONSEND_INSTANCE_ID"];
+  // Determine which sender number to use (1 or 2)
+  const senderNum = cfg[SENDER_CONFIG_KEY[sender]] ?? cfg["ONSEND_DEFAULT_SENDER"] ?? "1";
+  const token = cfg[`ONSEND_${senderNum}_TOKEN`];
+  const appId = cfg[`ONSEND_${senderNum}_APP_ID`]; // only account 2 uses app_id
 
-  if (!token || !instanceId) {
+  if (!token) {
     await logNotification(supabase, { type, phone, recipientName, message, referenceId, status: "failed" });
-    return { success: false, error: "ONSEND_API_TOKEN or ONSEND_INSTANCE_ID not configured" };
+    return { success: false, error: `OnSend sender ${senderNum} not configured (missing token)` };
   }
 
   try {
+    const cleanPhone = phone.replace(/[+ ]/g, "").trim();
+
+    // Build payload — account 2 uses app_id + body, account 1 uses type: "text"
+    const payload: Record<string, string> = {
+      phone_number: cleanPhone,
+      message,
+    };
+    if (appId) {
+      payload.app_id = appId;
+      payload.body = message;
+    } else {
+      payload.type = "text";
+    }
+
     const res = await fetch("https://onsend.io/api/v1/send", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Accept: "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        instance_id: instanceId,
-        to: phone,
-        message,
-      }),
+      body: JSON.stringify(payload),
     });
 
     const ok = res.ok;

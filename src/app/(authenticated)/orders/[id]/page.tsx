@@ -14,11 +14,28 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { ArrowLeft, Pencil } from "lucide-react";
+import { ArrowLeft, Download, ExternalLink, Pencil, Send } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import type { Driver, Vehicle } from "@/lib/types";
+
+const LOAD_FROM_OPTIONS = [
+  "Caltex Pasir Gudang",
+  "CYL",
+  "Petron Pasir Gudang",
+  "Petronas Melaka",
+  "Petronas Pasir Gudang",
+  "Store",
+];
 
 function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
   return (
@@ -41,6 +58,33 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [actionLoading, setActionLoading] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+
+  // Load drivers and vehicles for inline editing
+  useEffect(() => {
+    async function loadLookups() {
+      const [d, v] = await Promise.all([
+        supabase.from("drivers").select("id,name,role").eq("is_active", true).order("name"),
+        supabase.from("vehicles").select("id,plate_number,type").eq("is_active", true).order("plate_number"),
+      ]);
+      setDrivers((d.data as Driver[]) ?? []);
+      setVehicles(((v.data as Vehicle[]) ?? []).filter((vh) => vh.type === "Road Tanker" || vh.plate_number === "CYL" || vh.plate_number === "SELF COLLECTION"));
+    }
+    loadLookups();
+  }, [supabase]);
+
+  // Inline update helper
+  async function inlineUpdate(field: string, value: string | null) {
+    if (!order) return;
+    const { error } = await supabase.from("orders").update({ [field]: value }).eq("id", order.id);
+    if (error) {
+      toast.error("Failed to update");
+    } else {
+      toast.success("Updated");
+      fetchOrder();
+    }
+  }
 
   async function fetchOrder() {
     const [orderRes, itemsRes] = await Promise.all([
@@ -84,6 +128,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     const data = await res.json();
     if (!res.ok) {
       toast.error(data.error || "Action failed");
+    } else if (action === "cancel" && data.has_bukku_so) {
+      toast.success("Order cancelled. Please void the SO manually in Bukku.");
     }
     if (action === "reject") setRejectDialogOpen(false);
     setRejectReason("");
@@ -93,7 +139,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   const handleApprove = () => callOrderApi("approve");
   const handleReject = () => callOrderApi("reject", rejectReason);
-  const handleCancel = () => callOrderApi("cancel");
+  const handleCancel = () => {
+    const hasBukkuSO = !!(order as unknown as { bukku_so_id?: number })?.bukku_so_id;
+    const msg = hasBukkuSO
+      ? "Cancel this order? You will need to void the SO manually in Bukku."
+      : "Cancel this order?";
+    if (confirm(msg)) callOrderApi("cancel");
+  };
 
   if (loading) {
     return <div className="p-6 text-muted-foreground">Loading...</div>;
@@ -111,8 +163,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const approver = order.approver as { name: string } | null;
 
   const canEdit = role === "admin" || role === "office" || role === "manager";
+  const canInlineEdit = role === "admin" || role === "manager";
   const canApprove = order.status === "pending" && (role === "admin" || role === "manager");
   const canReject = order.status === "pending" && (role === "admin" || role === "manager");
+  const canSendToDriver = role === "admin" || role === "manager" || role === "office";
   const canCancel = role === "admin" && order.status !== "cancelled";
 
   return (
@@ -158,9 +212,59 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <InfoRow label="Agent" value={order.agent_name} />
             )}
             <InfoRow label="Destination" value={order.destination} />
-            <InfoRow label="Load From" value={order.load_from} />
-            <InfoRow label="Driver" value={driver?.name} />
-            <InfoRow label="Truck" value={vehicle?.plate_number} />
+            {canInlineEdit ? (
+              <>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-sm text-muted-foreground">Load From</span>
+                  <Select value={order.load_from ?? ""} onValueChange={(v) => inlineUpdate("load_from", v || null)}>
+                    <SelectTrigger className="h-7 w-auto min-w-[140px] text-sm font-medium text-right">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LOAD_FROM_OPTIONS.map((opt) => (
+                        <SelectItem key={opt} value={opt} label={opt}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-sm text-muted-foreground">Driver</span>
+                  <Select value={order.driver_id ?? ""} onValueChange={(v) => inlineUpdate("driver_id", v || null)}>
+                    <SelectTrigger className="h-7 w-auto min-w-[140px] text-sm font-medium text-right">
+                      <SelectValue>
+                        {order.driver_id ? (drivers.find((d) => d.id === order.driver_id)?.name ?? "—") : "Select..."}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {drivers.map((d) => (
+                        <SelectItem key={d.id} value={d.id} label={d.name}>{d.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-sm text-muted-foreground">Truck</span>
+                  <Select value={order.vehicle_id ?? ""} onValueChange={(v) => inlineUpdate("vehicle_id", v || null)}>
+                    <SelectTrigger className="h-7 w-auto min-w-[140px] text-sm font-medium text-right">
+                      <SelectValue>
+                        {order.vehicle_id ? (vehicles.find((vh) => vh.id === order.vehicle_id)?.plate_number ?? "—") : "Select..."}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vehicles.map((v) => (
+                        <SelectItem key={v.id} value={v.id} label={v.plate_number}>{v.plate_number}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : (
+              <>
+                <InfoRow label="Load From" value={order.load_from} />
+                <InfoRow label="Driver" value={driver?.name} />
+                <InfoRow label="Truck" value={vehicle?.plate_number} />
+              </>
+            )}
             <InfoRow label="DN Number" value={order.dn_number} />
             <InfoRow label="DN Received" value={order.dn_received ? "Yes" : "No"} />
             <InfoRow label="Invoice Number" value={order.invoice_number} />
@@ -183,7 +287,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       <div key={item.id || idx} className="p-2.5 border rounded-lg text-sm">
                         <div className="font-medium">{prod?.name ?? "—"}</div>
                         <div className="flex justify-between text-muted-foreground mt-1">
-                          <span>{item.quantity_liters?.toLocaleString()} L × RM {item.unit_price?.toFixed(4)}</span>
+                          <span>{item.quantity_liters?.toLocaleString()} {prod?.unit ?? "L"} × RM {item.unit_price?.toFixed(4)}</span>
                           <span className="font-medium text-foreground">RM {item.line_total?.toLocaleString("en-MY", { minimumFractionDigits: 2 })}</span>
                         </div>
                         {item.sst_amount > 0 && (
@@ -191,7 +295,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         )}
                         {order.order_type === "agent" && item.cost_to_agent != null && item.unit_price != null && (
                           <div className="text-xs text-muted-foreground">
-                            Cost to Agent: RM {item.cost_to_agent.toFixed(4)}/L
+                            Cost to Agent: RM {item.cost_to_agent.toFixed(4)}/{prod?.unit ?? "L"}
                             {" · "}Commission: RM {((item.unit_price - item.cost_to_agent) * (item.quantity_liters ?? 0)).toLocaleString("en-MY", { minimumFractionDigits: 2 })}
                           </div>
                         )}
@@ -241,7 +345,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <span className="text-sm text-muted-foreground">Bukku</span>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
                   <StatusBadge status={order.bukku_sync_status ?? "pending"} type="order" />
-                  {(order.status === "approved" || order.status === "delivered") && !order.bukku_so_id && (
+                  {order.status !== "cancelled" && order.status !== "rejected" && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -256,7 +360,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         });
                         const json = await res.json();
                         if (json.ok) {
-                          toast.success("Sales Order pushed to Bukku");
+                          toast.success(order.bukku_so_id ? "Sales Order updated in Bukku" : "Sales Order pushed to Bukku");
                           fetchOrder();
                         } else {
                           toast.error(json.error || "Failed to push SO");
@@ -264,48 +368,47 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         setActionLoading(false);
                       }}
                     >
-                      Push SO
-                    </Button>
-                  )}
-                  {(order.status === "approved" || order.status === "delivered") && !order.bukku_do_id && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-xs"
-                      disabled={actionLoading}
-                      onClick={async () => {
-                        setActionLoading(true);
-                        const res = await fetch("/api/bukku/push-invoice", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ orderId: order.id, pushType: "delivery_order" }),
-                        });
-                        const json = await res.json();
-                        if (json.ok) {
-                          toast.success("Delivery Order pushed to Bukku");
-                          fetchOrder();
-                        } else {
-                          toast.error(json.error || "Failed to push DO");
-                        }
-                        setActionLoading(false);
-                      }}
-                    >
-                      Push DO
+                      {order.bukku_so_id ? "Update SO" : "Push SO"}
                     </Button>
                   )}
                 </div>
               </div>
               {order.bukku_so_id && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Bukku SO</span>
-                  <span className="text-sm text-green-600 font-medium">Pushed</span>
-                </div>
-              )}
-              {order.bukku_do_id && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Bukku DO</span>
-                  <span className="text-sm text-green-600 font-medium">Pushed</span>
-                </div>
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Bukku SO</span>
+                    <span className="text-sm text-green-600 font-medium">{(order as unknown as { bukku_so_number?: string }).bukku_so_number ?? "Synced"}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">SO Document</span>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-xs gap-1"
+                        onClick={() => {
+                          window.open(`/api/bukku/pdf?orderId=${order.id}`, "_blank");
+                        }}
+                      >
+                        <Download className="h-3 w-3" />
+                        PDF
+                      </Button>
+                      {(order as unknown as { bukku_short_link?: string }).bukku_short_link && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-xs gap-1"
+                          onClick={() => {
+                            window.open((order as unknown as { bukku_short_link: string }).bukku_short_link, "_blank");
+                          }}
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          View Online
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </>
               )}
               {order.bukku_payment_status && (
                 <div className="flex justify-between items-center">
@@ -319,7 +422,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </div>
               <div className="border-t pt-3 space-y-1 text-sm">
                 <InfoRow label="Created by" value={creator?.name} />
-                <InfoRow label="Approved by" value={approver?.name} />
+                <InfoRow label="Acknowledged by" value={approver?.name} />
                 <InfoRow
                   label="Created"
                   value={order.created_at ? format(new Date(order.created_at), "d MMM yyyy HH:mm") : null}
@@ -331,39 +434,58 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       </div>
 
       {/* Action buttons */}
-      {(canApprove || canReject || canCancel) && (
-        <div className="flex gap-3 flex-wrap">
-          {canApprove && (
-            <Button
-              onClick={handleApprove}
-              disabled={actionLoading}
-              className="bg-status-approved-fg hover:bg-status-approved-fg/90"
-            >
-              Approve Order
-            </Button>
-          )}
-          {canReject && (
-            <Button
-              variant="outline"
-              onClick={() => setRejectDialogOpen(true)}
-              disabled={actionLoading}
-              className="border-destructive/30 text-destructive hover:bg-destructive/10"
-            >
-              Reject Order
-            </Button>
-          )}
-          {canCancel && order.status !== "cancelled" && (
-            <Button
-              variant="outline"
-              onClick={handleCancel}
-              disabled={actionLoading}
-              className="border-border text-muted-foreground"
-            >
-              Cancel Order
-            </Button>
-          )}
-        </div>
-      )}
+      <div className="flex gap-3 flex-wrap">
+        {canApprove && (
+          <Button
+            onClick={handleApprove}
+            disabled={actionLoading}
+            className="bg-status-approved-fg hover:bg-status-approved-fg/90"
+          >
+            Acknowledge
+          </Button>
+        )}
+        {canReject && (
+          <Button
+            variant="outline"
+            onClick={() => setRejectDialogOpen(true)}
+            disabled={actionLoading}
+            className="border-destructive/30 text-destructive hover:bg-destructive/10"
+          >
+            Reject Order
+          </Button>
+        )}
+        {canSendToDriver && order.driver_id && (
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={actionLoading}
+            onClick={async () => {
+              setActionLoading(true);
+              const res = await fetch(`/api/orders/${order.id}/notify-driver`, { method: "POST" });
+              const data = await res.json();
+              if (res.ok) {
+                toast.success("Delivery details sent to driver");
+              } else {
+                toast.error(data.error || "Failed to send");
+              }
+              setActionLoading(false);
+            }}
+          >
+            <Send className="h-3.5 w-3.5" />
+            Send to Driver
+          </Button>
+        )}
+        {canCancel && order.status !== "cancelled" && (
+          <Button
+            variant="outline"
+            onClick={handleCancel}
+            disabled={actionLoading}
+            className="border-border text-muted-foreground"
+          >
+            Cancel Order
+          </Button>
+        )}
+      </div>
 
       {/* Reject dialog */}
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>

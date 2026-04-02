@@ -16,7 +16,7 @@ type OrderAction = (typeof VALID_ACTIONS)[number];
 const ALLOWED_TRANSITIONS: Record<OrderAction, string[]> = {
   approve: ["pending"],
   reject: ["pending"],
-  cancel: ["pending", "approved"],
+  cancel: ["pending", "approved", "delivered"],
 };
 
 async function getAuthenticatedDriver(supabase: Awaited<ReturnType<typeof createClient>>) {
@@ -142,13 +142,15 @@ export async function PATCH(
   }
 
   if (validAction === "cancel") {
+    const hasBukkuSO = !!order.bukku_so_id;
+
     const { error } = await supabase
       .from("orders")
       .update({ status: "cancelled", updated_at: new Date().toISOString() })
       .eq("id", id);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, has_bukku_so: hasBukkuSO });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

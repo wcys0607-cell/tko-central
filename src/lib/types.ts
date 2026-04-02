@@ -62,7 +62,7 @@ export interface Driver {
   ic_number: string | null;
   phone: string | null;
   email: string | null;
-  role: "admin" | "manager" | "office" | "driver";
+  role: "admin" | "manager" | "office" | "driver" | "guest";
   assigned_vehicle_id: string | null;
   is_active: boolean;
 }

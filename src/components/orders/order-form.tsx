@@ -21,12 +21,12 @@ import { ArrowLeft, Plus, Trash2, Fuel, Truck, Package } from "lucide-react";
 import { toast } from "sonner";
 
 const LOAD_FROM_OPTIONS = [
-  "Store",
   "Caltex Pasir Gudang",
-  "Petronas Pasir Gudang",
-  "Petronas Melaka",
-  "Petron Pasir Gudang",
   "CYL",
+  "Petron Pasir Gudang",
+  "Petronas Melaka",
+  "Petronas Pasir Gudang",
+  "Store",
 ];
 
 // The 4 common products — IDs will be resolved at runtime
@@ -247,8 +247,8 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
   const totalSST = itemTotals.reduce((s, t) => s + t.sst, 0);
   const grandTotal = totalSale + totalSST;
 
-  // Filter out trailers (plate numbers containing 'T/')
-  const truckOptions = vehicles.filter((v) => !v.plate_number.includes("T/"));
+  // Only show Road Tankers, CYL, and SELF COLLECTION
+  const truckOptions = vehicles.filter((v) => v.type === "Road Tanker" || v.plate_number === "CYL" || v.plate_number === "SELF COLLECTION");
 
   const isAgent = form.order_type === "agent";
 
@@ -551,7 +551,7 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
                   </div>
                   <div className={`grid gap-3 ${isAgent ? "grid-cols-3" : "grid-cols-2"}`}>
                     <div>
-                      <label className="text-xs font-medium">Qty (L)</label>
+                      <label className="text-xs font-medium">Qty ({products.find((p) => p.id === item.product_id)?.unit ?? "L"})</label>
                       <Input
                         type="number"
                         value={item.quantity_liters}
@@ -563,10 +563,10 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
                       <label className="text-xs font-medium">Unit Price</label>
                       <Input
                         type="number"
-                        step="0.0001"
+                        step="0.001"
                         value={item.unit_price}
                         onChange={(e) => updateItem(idx, "unit_price", e.target.value)}
-                        placeholder="0.0000"
+                        placeholder="0.000"
                       />
                     </div>
                     {isAgent && (
@@ -574,10 +574,10 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
                         <label className="text-xs font-medium">Cost to Agent</label>
                         <Input
                           type="number"
-                          step="0.0001"
+                          step="0.001"
                           value={item.cost_to_agent}
                           onChange={(e) => updateItem(idx, "cost_to_agent", e.target.value)}
-                          placeholder="0.0000"
+                          placeholder="0.000"
                         />
                       </div>
                     )}
@@ -590,7 +590,7 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
                         const commPerL = (parseFloat(item.unit_price) || 0) - (parseFloat(item.cost_to_agent) || 0);
                         const qty = parseFloat(item.quantity_liters) || 0;
                         return commPerL > 0 ? (
-                          <span className="text-status-approved-fg font-medium">Commission: RM {(commPerL * qty).toLocaleString("en-MY", { minimumFractionDigits: 2 })} ({commPerL.toFixed(4)}/L)</span>
+                          <span className="text-status-approved-fg font-medium">Commission: RM {(commPerL * qty).toLocaleString("en-MY", { minimumFractionDigits: 2 })} ({commPerL.toFixed(3)}/L)</span>
                         ) : null;
                       })()}
                     </div>
@@ -679,10 +679,6 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Items</span>
                 <span className="font-medium">{items.filter((i) => i.product_id).length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total Qty</span>
-                <span className="font-medium">{totalQty ? totalQty.toLocaleString() + " L" : "—"}</span>
               </div>
               <div className="border-t pt-3 flex justify-between">
                 <span className="text-muted-foreground">Total Sale</span>

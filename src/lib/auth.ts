@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type UserRole = "admin" | "manager" | "office" | "driver";
+export type UserRole = "admin" | "manager" | "office" | "driver" | "guest";
 
 export interface DriverProfile {
   id: string;
@@ -15,11 +15,11 @@ export const ROUTE_ACCESS: Record<string, UserRole[]> = {
   "/dashboard": ["admin", "manager"],
   "/customers": ["admin", "manager", "office"],
   "/orders": ["admin", "manager", "office"],
-  "/stock": ["admin", "manager", "office"],
-  "/fleet": ["admin", "manager"],
-  "/driver": ["admin", "manager", "driver"],
+  "/stock": ["admin", "manager"],
+  "/fleet": ["admin", "manager", "office", "guest"],
+  "/driver": ["admin", "manager", "office", "driver"],
   "/reports": ["admin", "manager"],
-  "/bukku": ["admin"],
+  "/bukku": ["admin", "office"],
   "/settings": ["admin"],
 };
 
@@ -32,6 +32,8 @@ export function getRoleRedirectPath(role: UserRole): string {
       return "/orders";
     case "driver":
       return "/driver";
+    case "guest":
+      return "/fleet";
     default:
       return "/login";
   }

@@ -14,7 +14,7 @@ export async function POST() {
     .eq("auth_user_id", user.id)
     .single();
 
-  if (!driver || !["admin", "manager"].includes(driver.role)) {
+  if (!driver || !["admin", "manager", "office"].includes(driver.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

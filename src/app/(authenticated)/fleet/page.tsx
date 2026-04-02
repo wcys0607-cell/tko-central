@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import Link from "next/link";
 import { Plus, FileText, Search } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
 
 const VEHICLE_TYPES = [
   "Road Tanker",
@@ -33,6 +34,9 @@ const VEHICLE_TYPES = [
 
 export default function FleetPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { role } = useAuth();
+  const canAdd = role === "admin" || role === "manager";
+  const canEdit = role === "admin" || role === "manager" || role === "office";
   const [vehicles, setVehicles] = useState<(Vehicle & { assigned_driver?: string })[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
@@ -146,9 +150,11 @@ export default function FleetPage() {
               <FileText className="w-4 h-4 mr-1" /> Document Tracker
             </Button>
           </Link>
-          <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={openAdd}>
-            <Plus className="w-4 h-4 mr-1" /> Add Vehicle
-          </Button>
+          {canAdd && (
+            <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={openAdd}>
+              <Plus className="w-4 h-4 mr-1" /> Add Vehicle
+            </Button>
+          )}
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogContent>
               <DialogHeader>
@@ -241,13 +247,13 @@ export default function FleetPage() {
               <th className="text-left p-3">Owner</th>
               <th className="text-left p-3">Assigned Driver</th>
               <th className="text-left p-3">Status</th>
-              <th className="text-right p-3">Actions</th>
+              {canEdit && <th className="text-right p-3">Actions</th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center p-6 text-muted-foreground">
+                <td colSpan={canEdit ? 7 : 6} className="text-center p-6 text-muted-foreground">
                   No vehicles found
                 </td>
               </tr>
@@ -273,15 +279,17 @@ export default function FleetPage() {
                       {v.is_active ? "Active" : "Inactive"}
                     </Badge>
                   </td>
-                  <td className="p-3 text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEdit(v)}
-                    >
-                      Edit
-                    </Button>
-                  </td>
+                  {canEdit && (
+                    <td className="p-3 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEdit(v)}
+                      >
+                        Edit
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               ))
             )}

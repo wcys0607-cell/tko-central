@@ -18,39 +18,57 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Send } from "lucide-react";
 import { format } from "date-fns";
+import { useAuth } from "@/components/providers/auth-provider";
+import { toast } from "sonner";
+
+const LOAD_FROM_OPTIONS = [
+  "Caltex Pasir Gudang",
+  "CYL",
+  "Petron Pasir Gudang",
+  "Petronas Melaka",
+  "Petronas Pasir Gudang",
+  "Store",
+];
 
 const PAGE_SIZE = 50;
 
 export default function OrdersPage() {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
+  const { role } = useAuth();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  const canInlineEdit = role === "admin" || role === "manager";
+  const canSendToDriver = role === "admin" || role === "manager" || role === "office";
+
   // Lookup maps for names
   const [customerMap, setCustomerMap] = useState<Record<string, string>>({});
   const [productMap, setProductMap] = useState<Record<string, string>>({});
   const [driverMap, setDriverMap] = useState<Record<string, string>>({});
   const [vehicleMap, setVehicleMap] = useState<Record<string, string>>({});
+  const [driverList, setDriverList] = useState<{ id: string; name: string }[]>([]);
+  const [vehicleList, setVehicleList] = useState<{ id: string; plate_number: string }[]>([]);
 
   // Load lookup maps once
   useEffect(() => {
     async function loadLookups() {
       const [c, p, d, v] = await Promise.all([
-        supabase.from("customers").select("id, name, short_name"),
-        supabase.from("products").select("id, name"),
-        supabase.from("drivers").select("id, name"),
-        supabase.from("vehicles").select("id, plate_number"),
+        supabase.from("customers").select("id, name, short_name").limit(10000),
+        supabase.from("products").select("id, name").limit(10000),
+        supabase.from("drivers").select("id, name").order("name").limit(10000),
+        supabase.from("vehicles").select("id, plate_number, type").order("plate_number").limit(10000),
       ]);
       const cm: Record<string, string> = {};
       for (const row of (c.data ?? []) as { id: string; name: string; short_name?: string | null }[]) {
@@ -60,12 +78,18 @@ export default function OrdersPage() {
       const pm: Record<string, string> = {};
       for (const row of (p.data ?? []) as { id: string; name: string }[]) pm[row.id] = row.name;
       setProductMap(pm);
+      const driverRows = (d.data ?? []) as { id: string; name: string }[];
       const dm: Record<string, string> = {};
-      for (const row of (d.data ?? []) as { id: string; name: string }[]) dm[row.id] = row.name;
+      for (const row of driverRows) dm[row.id] = row.name;
       setDriverMap(dm);
+      setDriverList(driverRows);
+      const vehicleRows = ((v.data ?? []) as { id: string; plate_number: string; type?: string | null }[]).filter(
+        (vh) => vh.type === "Road Tanker" || vh.plate_number === "CYL" || vh.plate_number === "SELF COLLECTION"
+      );
       const vm: Record<string, string> = {};
-      for (const row of (v.data ?? []) as { id: string; plate_number: string }[]) vm[row.id] = row.plate_number;
+      for (const row of vehicleRows) vm[row.id] = row.plate_number;
       setVehicleMap(vm);
+      setVehicleList(vehicleRows);
     }
     loadLookups();
   }, [supabase]);
@@ -75,7 +99,7 @@ export default function OrdersPage() {
     let query = supabase
       .from("orders")
       .select(
-        `id, order_date, customer_id, destination, product_id, quantity_liters, unit_price, total_sale, dn_number, invoice_number, status, bukku_sync_status, driver_id, vehicle_id, items:order_items(product_id)`,
+        `id, order_date, customer_id, destination, product_id, quantity_liters, unit_price, total_sale, dn_number, invoice_number, status, bukku_sync_status, driver_id, vehicle_id, load_from, delivery_remark, items:order_items(product_id, quantity_liters), customer:customer_id(id, name, short_name)`,
         { count: "exact" }
       )
       .order("order_date", { ascending: false })
@@ -107,6 +131,46 @@ export default function OrdersPage() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  // Inline update for manager
+  async function inlineUpdate(orderId: string, field: string, value: string | null) {
+    const { error } = await supabase.from("orders").update({ [field]: value }).eq("id", orderId);
+    if (error) {
+      toast.error("Failed to update");
+    } else {
+      // Update local state without full refetch
+      setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, [field]: value } : o));
+    }
+  }
+
+  // Acknowledge order
+  async function handleAcknowledge(orderId: string) {
+    setActionLoading(orderId);
+    const res = await fetch(`/api/orders/${orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "approve" }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      toast.error(data.error || "Failed");
+    }
+    await fetchOrders();
+    setActionLoading(null);
+  }
+
+  // Send to driver
+  async function handleNotifyDriver(orderId: string) {
+    setActionLoading(orderId);
+    const res = await fetch(`/api/orders/${orderId}/notify-driver`, { method: "POST" });
+    const data = await res.json();
+    if (res.ok) {
+      toast.success("Sent to driver");
+    } else {
+      toast.error(data.error || "Failed to send");
+    }
+    setActionLoading(null);
+  }
+
   const activeFilterCount =
     (statusFilter !== "all" ? 1 : 0) +
     (dateFrom ? 1 : 0) +
@@ -136,36 +200,49 @@ export default function OrdersPage() {
     {
       key: "customer",
       label: "Customer",
-      className: "max-w-0 w-full",
+      className: "whitespace-nowrap max-w-[140px]",
       mobilePrimary: true,
-      render: (o) => (
-        <span className="block truncate">
-          {customerMap[o.customer_id] ?? "—"}
-        </span>
-      ),
+      render: (o) => {
+        const cust = o.customer as { name: string; short_name?: string | null } | null;
+        return (
+          <span className="block truncate" title={cust?.name || customerMap[o.customer_id]}>
+            {cust?.short_name || cust?.name || customerMap[o.customer_id] || "—"}
+          </span>
+        );
+      },
     },
     {
-      key: "product",
-      label: "Product",
+      key: "load_from",
+      label: "Load From",
       className: "whitespace-nowrap",
-      mobileVisible: true,
+      hideClass: "hidden lg:table-cell",
       render: (o) => {
-        const items = (o.items ?? []) as unknown as { product_id: string | null }[];
-        if (items.length > 1) {
-          const firstName = items[0]?.product_id ? productMap[items[0].product_id] : "—";
-          return <span title={items.map((i) => i.product_id ? productMap[i.product_id] : "").join(", ")}>{firstName} +{items.length - 1}</span>;
+        if (canInlineEdit) {
+          return (
+            <div onClick={(e) => e.stopPropagation()}>
+              <Select value={o.load_from ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "load_from", v || null); }}>
+                <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs">
+                  <SelectValue placeholder="—" />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOAD_FROM_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt} label={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
         }
-        if (items.length === 1 && items[0]?.product_id) return productMap[items[0].product_id] ?? "—";
-        return o.product_id ? productMap[o.product_id] ?? "—" : "—";
+        return <span className="text-sm">{o.load_from ?? "—"}</span>;
       },
     },
     {
       key: "destination",
-      label: "Dest.",
-      className: "max-w-0 w-full",
-      hideClass: "hidden lg:table-cell",
+      label: "Destination",
+      className: "max-w-[180px]",
+      mobileVisible: true,
       render: (o) => (
-        <span className="block truncate">{o.destination ?? "—"}</span>
+        <span className="block truncate text-sm" title={o.destination ?? ""}>{o.destination ?? "—"}</span>
       ),
     },
     {
@@ -173,11 +250,18 @@ export default function OrdersPage() {
       label: "Qty (L)",
       className: "text-right whitespace-nowrap",
       mobileVisible: true,
-      render: (o) => (
-        <span className="font-mono text-sm">
-          {o.quantity_liters?.toLocaleString() ?? "—"}
-        </span>
-      ),
+      render: (o) => {
+        const items = (o.items ?? []) as unknown as { product_id: string | null; quantity_liters: number | null }[];
+        const getName = (pid: string | null) => pid ? (productMap[pid] ?? "").toUpperCase() : "";
+        const dieselItem = items.find((i) => getName(i.product_id).includes("DIESEL"));
+        const ltItem = items.find((i) => getName(i.product_id).includes("(LT)"));
+        const qty = dieselItem?.quantity_liters ?? ltItem?.quantity_liters ?? o.quantity_liters;
+        return (
+          <span className="font-mono text-sm">
+            {qty?.toLocaleString() ?? "—"}
+          </span>
+        );
+      },
     },
     {
       key: "total",
@@ -191,44 +275,97 @@ export default function OrdersPage() {
           : "—",
     },
     {
-      key: "price",
-      label: "Price",
-      className: "text-right whitespace-nowrap",
-      hideClass: "hidden xl:table-cell",
-      render: (o) => o.unit_price ? o.unit_price.toFixed(4) : "—",
-    },
-    {
       key: "driver",
       label: "Driver",
       className: "whitespace-nowrap",
       hideClass: "hidden lg:table-cell",
-      render: (o) => o.driver_id ? driverMap[o.driver_id] ?? "—" : "—",
+      render: (o) => {
+        if (canInlineEdit) {
+          return (
+            <div onClick={(e) => e.stopPropagation()}>
+              <Select value={o.driver_id ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "driver_id", v || null); }}>
+                <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs">
+                  <SelectValue>{o.driver_id ? driverMap[o.driver_id] ?? "—" : "—"}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {driverList.map((d) => (
+                    <SelectItem key={d.id} value={d.id} label={d.name}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        }
+        return <span className="text-sm">{o.driver_id ? driverMap[o.driver_id] ?? "—" : "—"}</span>;
+      },
     },
     {
       key: "truck",
       label: "Truck",
       className: "whitespace-nowrap",
       hideClass: "hidden xl:table-cell",
-      render: (o) => o.vehicle_id ? vehicleMap[o.vehicle_id] ?? "—" : "—",
+      render: (o) => {
+        if (canInlineEdit) {
+          return (
+            <div onClick={(e) => e.stopPropagation()}>
+              <Select value={o.vehicle_id ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "vehicle_id", v || null); }}>
+                <SelectTrigger className="h-7 w-auto min-w-[90px] text-xs">
+                  <SelectValue>{o.vehicle_id ? vehicleMap[o.vehicle_id] ?? "—" : "—"}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {vehicleList.map((v) => (
+                    <SelectItem key={v.id} value={v.id} label={v.plate_number}>{v.plate_number}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        }
+        return <span className="text-sm">{o.vehicle_id ? vehicleMap[o.vehicle_id] ?? "—" : "—"}</span>;
+      },
     },
     {
       key: "status",
       label: "Status",
       className: "text-center whitespace-nowrap",
       mobileVisible: true,
-      render: (o) => <StatusBadge status={o.status} type="order" />,
+      render: (o) => {
+        if (canInlineEdit && o.status === "pending") {
+          return (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 text-xs border-status-approved-fg/30 text-status-approved-fg"
+              disabled={actionLoading === o.id}
+              onClick={(e) => { e.stopPropagation(); handleAcknowledge(o.id); }}
+            >
+              Acknowledge
+            </Button>
+          );
+        }
+        return <StatusBadge status={o.status} type="order" />;
+      },
     },
     {
-      key: "bukku",
-      label: "Bukku",
-      className: "text-center whitespace-nowrap",
+      key: "actions",
+      label: "",
+      className: "text-center whitespace-nowrap w-[40px]",
       hideClass: "hidden lg:table-cell",
-      render: (o) => (
-        <StatusBadge
-          status={o.bukku_sync_status ?? "pending"}
-          type="bukku"
-        />
-      ),
+      render: (o) => {
+        if (!canSendToDriver || !o.driver_id) return null;
+        return (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            title="Send to Driver"
+            disabled={actionLoading === o.id}
+            onClick={(e) => { e.stopPropagation(); handleNotifyDriver(o.id); }}
+          >
+            <Send className="h-3.5 w-3.5" />
+          </Button>
+        );
+      },
     },
   ];
 
@@ -279,7 +416,7 @@ export default function OrdersPage() {
           <SelectContent>
             <SelectItem value="all" label="All Status">All Status</SelectItem>
             <SelectItem value="pending" label="Pending">Pending</SelectItem>
-            <SelectItem value="approved" label="Approved">Approved</SelectItem>
+            <SelectItem value="approved" label="Acknowledged">Acknowledged</SelectItem>
             <SelectItem value="rejected" label="Rejected">Rejected</SelectItem>
             <SelectItem value="delivered" label="Delivered">Delivered</SelectItem>
             <SelectItem value="cancelled" label="Cancelled">Cancelled</SelectItem>

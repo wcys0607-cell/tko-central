@@ -42,19 +42,19 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Stock Control",
     icon: Fuel,
     href: "/stock",
-    roles: ["admin", "manager", "office"],
+    roles: ["admin", "manager"],
   },
   {
     label: "Fleet",
     icon: Truck,
     href: "/fleet",
-    roles: ["admin", "manager"],
+    roles: ["admin", "manager", "office", "guest"],
   },
   {
     label: "Driver Portal",
     icon: User,
     href: "/driver",
-    roles: ["driver"],
+    roles: ["admin", "manager", "office", "driver"],
   },
   {
     label: "Reports",
@@ -66,7 +66,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Bukku Sync",
     icon: RefreshCw,
     href: "/bukku",
-    roles: ["admin"],
+    roles: ["admin", "office"],
   },
   {
     label: "Settings",

@@ -166,6 +166,8 @@ export function UserManagementTab() {
         return "bg-status-delivered-bg text-status-delivered-fg border-status-delivered-fg/20";
       case "office":
         return "bg-status-approved-bg text-status-approved-fg border-status-approved-fg/20";
+      case "guest":
+        return "bg-secondary text-secondary-foreground border-secondary";
       default:
         return "bg-muted text-muted-foreground border-muted";
     }
@@ -337,6 +339,7 @@ export function UserManagementTab() {
                   <SelectItem value="manager" label="Manager">Manager</SelectItem>
                   <SelectItem value="office" label="Office">Office</SelectItem>
                   <SelectItem value="driver" label="Driver">Driver</SelectItem>
+                  <SelectItem value="guest" label="Guest">Guest</SelectItem>
                 </SelectContent>
               </Select>
             </div>

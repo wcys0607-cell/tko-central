@@ -70,12 +70,18 @@ export async function bukkuFetch<T = unknown>(
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
 
+    const json = await res.json().catch(() => null);
+
     if (!res.ok) {
-      const errText = await res.text();
-      return { ok: false, data: null, error: errText, status: res.status };
+      const errText = json ? JSON.stringify(json) : "Unknown error";
+      return { ok: false, data: json as T, error: errText, status: res.status };
     }
 
-    const json = await res.json();
+    // Check for intercept responses (Bukku returns 200 but with intercept_type)
+    if (json && typeof json === "object" && "intercept_type" in json) {
+      return { ok: false, data: json as T, error: JSON.stringify(json), status: res.status };
+    }
+
     return { ok: true, data: json as T, status: res.status };
   } catch (err) {
     return {
@@ -128,6 +134,31 @@ export async function bukkuFetchAll<T>(
   }
 
   return { ok: true, data: allData };
+}
+
+/** Fetch a PDF from Bukku (returns raw binary buffer) */
+export async function bukkuFetchPdf(
+  config: BukkuConfig,
+  path: string
+): Promise<{ ok: boolean; data: ArrayBuffer | null; error?: string }> {
+  const url = `${config.baseUrl}${path}`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        "Company-Subdomain": config.subdomain,
+      },
+    });
+    const contentType = res.headers.get("content-type") || "";
+    if (!res.ok || !contentType.includes("application/pdf")) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, data: null, error: `Status ${res.status}: ${text.substring(0, 200)}` };
+    }
+    const buffer = await res.arrayBuffer();
+    return { ok: true, data: buffer };
+  } catch (err) {
+    return { ok: false, data: null, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /** Test Bukku connection by fetching 1 contact */

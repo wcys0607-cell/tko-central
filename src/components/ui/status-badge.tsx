@@ -42,12 +42,16 @@ export function StatusBadge({
 }: StatusBadgeProps) {
   const styles = STATUS_STYLES[type]?.[status] ?? "bg-muted text-muted-foreground";
 
+  const LABEL_MAP: Record<string, string> = {
+    approved: "acknowledged",
+  };
+
   return (
     <Badge
       variant="secondary"
       className={`capitalize font-medium ${styles} ${className}`}
     >
-      {status.replace(/_/g, " ")}
+      {LABEL_MAP[status] ?? status.replace(/_/g, " ")}
     </Badge>
   );
 }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const VALID_ROLES = ["admin", "manager", "office", "driver"];
+const VALID_ROLES = ["admin", "manager", "office", "driver", "guest"];
 
 export async function POST(request: Request) {
   // Verify the requesting user is admin
