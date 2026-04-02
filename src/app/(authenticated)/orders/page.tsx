@@ -454,6 +454,7 @@ export default function OrdersPage() {
         loading={loading}
         emptyMessage="No orders found."
         tableClassName="min-w-[900px]"
+        alwaysTable
       />
 
       {/* Pagination */}

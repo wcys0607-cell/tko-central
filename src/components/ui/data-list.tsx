@@ -36,6 +36,8 @@ interface DataListProps<T> {
   loading?: boolean;
   loadingRows?: number;
   tableClassName?: string;
+  /** Force table layout even on mobile */
+  alwaysTable?: boolean;
 }
 
 export function DataList<T>({
@@ -47,6 +49,7 @@ export function DataList<T>({
   loading = false,
   loadingRows = 6,
   tableClassName = "",
+  alwaysTable = false,
 }: DataListProps<T>) {
   const isMobile = useIsMobile();
 
@@ -72,8 +75,8 @@ export function DataList<T>({
     );
   }
 
-  // Mobile: Card layout
-  if (isMobile) {
+  // Mobile: Card layout (skipped if alwaysTable)
+  if (isMobile && !alwaysTable) {
     const primaryCol = columns.find((c) => c.mobilePrimary);
     const secondaryCol = columns.find((c) => c.mobileSecondary);
     const metaCols = columns.filter(
