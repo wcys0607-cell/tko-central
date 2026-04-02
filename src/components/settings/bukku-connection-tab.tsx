@@ -6,7 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Check, X, Loader2 } from "lucide-react";
+import { RefreshCw, Check, X, Loader2, Trash2, HardDrive } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface SyncStatus {
   contacts: { lastSync: string | null; loading: boolean };
@@ -28,6 +35,11 @@ export function BukkuConnectionTab() {
     products: { lastSync: null, loading: false },
     invoices: { lastSync: null, loading: false },
   });
+  const [storageStats, setStorageStats] = useState<{ fileCount: number; totalSize: number } | null>(null);
+  const [storageLoading, setStorageLoading] = useState(false);
+  const [cleanupDays, setCleanupDays] = useState("90");
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupMessage, setCleanupMessage] = useState("");
 
   const loadConfig = useCallback(async () => {
     const { data } = await supabase
@@ -145,6 +157,51 @@ export function BukkuConnectionTab() {
     return new Date(ts).toLocaleString("en-MY");
   }
 
+  const loadStorageStats = useCallback(async () => {
+    setStorageLoading(true);
+    try {
+      const res = await fetch("/api/bukku/storage");
+      const data = await res.json();
+      setStorageStats(data);
+    } catch {
+      setStorageStats(null);
+    }
+    setStorageLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadStorageStats();
+  }, [loadStorageStats]);
+
+  async function handleCleanup() {
+    if (!confirm(`Delete all Bukku PDFs older than ${cleanupDays} days?`)) return;
+    setCleanupLoading(true);
+    setCleanupMessage("");
+    try {
+      const res = await fetch("/api/bukku/storage", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: parseInt(cleanupDays) }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCleanupMessage(`Deleted ${data.deleted} file(s)`);
+        loadStorageStats();
+      } else {
+        setCleanupMessage(data.error || "Cleanup failed");
+      }
+    } catch {
+      setCleanupMessage("Network error");
+    }
+    setCleanupLoading(false);
+  }
+
+  function formatBytes(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   return (
     <div className="space-y-4">
       {/* Connection Settings */}
@@ -252,6 +309,69 @@ export function BukkuConnectionTab() {
                 </Button>
               </div>
             ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Document Storage */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <HardDrive className="h-4 w-4" />
+            Document Storage
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Bukku SO PDFs</p>
+              <p className="text-xs text-muted-foreground">
+                {storageLoading
+                  ? "Loading..."
+                  : storageStats
+                    ? `${storageStats.fileCount} file(s) · ${formatBytes(storageStats.totalSize)}`
+                    : "Unable to load"}
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={loadStorageStats} disabled={storageLoading}>
+              {storageLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            </Button>
+          </div>
+          <div className="border-t pt-3">
+            <p className="text-sm font-medium mb-2">Cleanup</p>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Delete PDFs older than</span>
+              <Select value={cleanupDays} onValueChange={(v) => v && setCleanupDays(v)}>
+                <SelectTrigger className="w-[100px] h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30" label="30 days">30 days</SelectItem>
+                  <SelectItem value="60" label="60 days">60 days</SelectItem>
+                  <SelectItem value="90" label="90 days">90 days</SelectItem>
+                  <SelectItem value="180" label="180 days">180 days</SelectItem>
+                  <SelectItem value="365" label="1 year">1 year</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCleanup}
+                disabled={cleanupLoading}
+                className="text-destructive border-destructive/30 hover:bg-destructive/10"
+              >
+                {cleanupLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-1" /> Clean Up
+                  </>
+                )}
+              </Button>
+            </div>
+            {cleanupMessage && (
+              <p className="text-sm text-muted-foreground mt-2">{cleanupMessage}</p>
+            )}
           </div>
         </CardContent>
       </Card>
