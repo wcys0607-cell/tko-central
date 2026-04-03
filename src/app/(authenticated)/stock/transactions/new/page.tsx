@@ -259,45 +259,49 @@ export default function NewTransactionPage() {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Price per Liter{" "}
-                  {txType === "purchase" && (
-                    <span className="text-destructive">*</span>
-                  )}
-                </label>
-                <Input
-                  type="number"
-                  step="0.0001"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="0.0000"
-                />
-              </div>
+              {txType !== "transfer" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Price per Liter{" "}
+                    {txType === "purchase" && (
+                      <span className="text-destructive">*</span>
+                    )}
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.0001"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    placeholder="0.0000"
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Owner</label>
-                <Select value={owner} onValueChange={(v) => v && setOwner(v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Company" label="Company">Company</SelectItem>
-                    <SelectItem value="Partner" label="Partner">Partner</SelectItem>
-                  </SelectContent>
-                </Select>
+            {txType !== "transfer" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Owner</label>
+                  <Select value={owner} onValueChange={(v) => v && setOwner(v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Company" label="Company">Company</SelectItem>
+                      <SelectItem value="Partner" label="Partner">Partner</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Customer Name</label>
+                  <Input
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Optional"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Customer Name</label>
-                <Input
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-            </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Reference (Invoice/DN)</label>
