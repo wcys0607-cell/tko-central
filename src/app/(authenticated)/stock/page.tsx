@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Plus, ClipboardCheck, History, List } from "lucide-react";
+import { ClipboardCheck, History, List } from "lucide-react";
 
 interface WAC {
   total_qty: number;
@@ -164,11 +164,6 @@ export default function StockDashboardPage() {
           <Link href="/stock/transactions">
             <Button variant="outline" size="sm">
               <List className="w-4 h-4 mr-1" /> Transactions
-            </Button>
-          </Link>
-          <Link href="/stock/transactions/new">
-            <Button size="sm" className="bg-primary hover:bg-primary/90">
-              <Plus className="w-4 h-4 mr-1" /> New Entry
             </Button>
           </Link>
           <Link href="/stock/stock-take">
