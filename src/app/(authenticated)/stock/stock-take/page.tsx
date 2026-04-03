@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { ArrowLeft, Camera, X } from "lucide-react";
 import { toast } from "sonner";
@@ -28,6 +35,14 @@ interface SessionRow {
   photos: string[];
   takerName: string | null;
   measurements: Record<string, number | null>; // location_id -> measured_liters
+}
+
+interface DetailEntry {
+  locationName: string;
+  locationType: string;
+  measured: number;
+  system: number;
+  variance: number;
 }
 
 function varianceColor(pct: number): string {
@@ -51,6 +66,9 @@ export default function StockTakePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [selectedSession, setSelectedSession] = useState<SessionRow | null>(null);
+  const [detailEntries, setDetailEntries] = useState<DetailEntry[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // All locations for pivot table columns (ordered: tanks, drum, vehicles, meter)
@@ -159,6 +177,32 @@ export default function StockTakePage() {
     URL.revokeObjectURL(photoPreviewUrls[idx]);
     setSessionPhotos((prev) => prev.filter((_, i) => i !== idx));
     setPhotoPreviewUrls((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function openSessionDetail(session: SessionRow) {
+    setSelectedSession(session);
+    setDetailLoading(true);
+
+    const { data } = await supabase
+      .from("stock_takes")
+      .select("location_id, measured_liters, system_liters, variance, location:stock_locations!stock_takes_location_id_fkey(name, code, type)")
+      .eq("session_id", session.id);
+
+    if (data) {
+      setDetailEntries(
+        data.map((d: Record<string, unknown>) => {
+          const loc = d.location as { name?: string; code?: string; type?: string } | null;
+          return {
+            locationName: loc?.name || loc?.code || "—",
+            locationType: loc?.type ?? "tank",
+            measured: (d.measured_liters as number) ?? 0,
+            system: (d.system_liters as number) ?? 0,
+            variance: (d.variance as number) ?? 0,
+          };
+        })
+      );
+    }
+    setDetailLoading(false);
   }
 
   async function handleSave() {
@@ -615,7 +659,8 @@ export default function StockTakePage() {
                   sessions.map((session) => (
                     <tr
                       key={session.id}
-                      className="border-b hover:bg-muted/50"
+                      className="border-b hover:bg-muted/50 cursor-pointer"
+                      onClick={() => openSessionDetail(session)}
                     >
                       <td className="p-2 sticky left-0 bg-background font-medium">
                         {new Date(session.date).toLocaleDateString("en-MY", {
@@ -694,6 +739,137 @@ export default function StockTakePage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Session Detail Dialog */}
+      <Dialog
+        open={!!selectedSession}
+        onOpenChange={(open) => {
+          if (!open) setSelectedSession(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          {selectedSession && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  Stock Take —{" "}
+                  {new Date(selectedSession.date).toLocaleDateString("en-MY", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  })}
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-2">
+                <span>
+                  Time:{" "}
+                  {new Date(selectedSession.created_at).toLocaleTimeString(
+                    "en-MY",
+                    { hour: "2-digit", minute: "2-digit", hour12: true }
+                  )}
+                </span>
+                {selectedSession.takerName && (
+                  <span>Taken by: {selectedSession.takerName}</span>
+                )}
+              </div>
+
+              {detailLoading ? (
+                <p className="text-muted-foreground py-4">Loading...</p>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted border-b">
+                      <tr>
+                        <th className="text-left p-2.5">Location</th>
+                        <th className="text-right p-2.5">System</th>
+                        <th className="text-right p-2.5">Measured</th>
+                        <th className="text-right p-2.5">Variance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detailEntries.map((entry, i) => {
+                        const isMeter = entry.locationType === "meter";
+                        const pct =
+                          !isMeter && entry.system > 0
+                            ? (entry.variance / entry.system) * 100
+                            : 0;
+                        return (
+                          <tr key={i} className="border-b">
+                            <td className="p-2.5 font-medium">
+                              {entry.locationName}
+                            </td>
+                            <td className="p-2.5 text-right font-mono">
+                              {isMeter
+                                ? "—"
+                                : `${Math.round(entry.system).toLocaleString()}L`}
+                            </td>
+                            <td className="p-2.5 text-right font-mono">
+                              {Math.round(entry.measured).toLocaleString()}
+                              {!isMeter && "L"}
+                            </td>
+                            <td className="p-2.5 text-right">
+                              {isMeter ? (
+                                "—"
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className={varianceColor(pct)}
+                                >
+                                  {entry.variance > 0 ? "+" : ""}
+                                  {Math.round(
+                                    entry.variance
+                                  ).toLocaleString()}
+                                  L ({pct.toFixed(1)}%)
+                                </Badge>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Notes */}
+              {selectedSession.notes && (
+                <div className="mt-3">
+                  <p className="text-sm font-medium mb-1">Remark</p>
+                  <div className="text-sm whitespace-pre-wrap bg-muted/50 rounded-md p-3">
+                    {selectedSession.notes}
+                  </div>
+                </div>
+              )}
+
+              {/* Photos */}
+              {selectedSession.photos.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-sm font-medium mb-1">Photos</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedSession.photos.map((url, pi) => (
+                      <a
+                        key={pi}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-24 h-24 rounded-md overflow-hidden border hover:ring-2 ring-primary"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt={`Photo ${pi + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
