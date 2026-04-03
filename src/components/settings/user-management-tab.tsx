@@ -28,7 +28,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Pencil, UserX, UserCheck } from "lucide-react";
+import { Plus, Pencil, UserX, UserCheck, X, Truck } from "lucide-react";
+import { toast } from "sonner";
+
+interface Vehicle {
+  id: string;
+  plate_number: string;
+  type: string | null;
+}
 
 interface Driver {
   id: string;
@@ -68,18 +75,75 @@ export function UserManagementTab() {
   const [error, setError] = useState("");
   const supabase = useMemo(() => createClient(), []);
 
+  // Vehicle assignment
+  const [allVehicles, setAllVehicles] = useState<Vehicle[]>([]);
+  const [assignedVehicleIds, setAssignedVehicleIds] = useState<string[]>([]);
+  const [addVehicleId, setAddVehicleId] = useState("");
+  // All assignments for table display: driverId -> plate_number[]
+  const [allAssignments, setAllAssignments] = useState<Map<string, string[]>>(new Map());
+
   async function loadDrivers() {
-    const { data } = await supabase
-      .from("drivers")
-      .select("id, name, email, phone, ic_number, role, is_active")
-      .order("name");
-    if (data) setDrivers(data);
+    const [dRes, vRes, aRes] = await Promise.all([
+      supabase.from("drivers").select("id, name, email, phone, ic_number, role, is_active").order("name"),
+      supabase.from("vehicles").select("id, plate_number, type").eq("is_active", true).order("plate_number"),
+      supabase.from("driver_vehicle_assignments").select("driver_id, vehicle_id"),
+    ]);
+    if (dRes.data) setDrivers(dRes.data);
+    const vehicles = vRes.data ?? [];
+    if (vehicles.length > 0) setAllVehicles(vehicles);
+
+    // Build assignment map
+    const vMap = new Map<string, string>();
+    for (const v of vehicles) vMap.set(v.id, v.plate_number);
+    const aMap = new Map<string, string[]>();
+    for (const a of aRes.data ?? []) {
+      const plate = vMap.get(a.vehicle_id);
+      if (!plate) continue;
+      if (!aMap.has(a.driver_id)) aMap.set(a.driver_id, []);
+      aMap.get(a.driver_id)!.push(plate);
+    }
+    setAllAssignments(aMap);
     setLoading(false);
   }
 
   useEffect(() => {
     loadDrivers();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadAssignments(driverId: string) {
+    const { data } = await supabase
+      .from("driver_vehicle_assignments")
+      .select("vehicle_id")
+      .eq("driver_id", driverId);
+    setAssignedVehicleIds((data ?? []).map((a: { vehicle_id: string }) => a.vehicle_id));
+  }
+
+  async function addVehicleAssignment() {
+    if (!addVehicleId || !editingId) return;
+    const { error } = await supabase
+      .from("driver_vehicle_assignments")
+      .insert({ driver_id: editingId, vehicle_id: addVehicleId });
+    if (error) {
+      if (error.code === "23505") toast.error("Vehicle already assigned");
+      else toast.error(error.message);
+    } else {
+      toast.success(`Assigned ${allVehicles.find((v) => v.id === addVehicleId)?.plate_number}`);
+      setAddVehicleId("");
+      loadAssignments(editingId);
+      loadDrivers(); // refresh table column
+    }
+  }
+
+  async function removeVehicleAssignment(vehicleId: string) {
+    if (!editingId) return;
+    await supabase
+      .from("driver_vehicle_assignments")
+      .delete()
+      .eq("driver_id", editingId)
+      .eq("vehicle_id", vehicleId);
+    loadAssignments(editingId);
+    loadDrivers(); // refresh table column
+  }
 
   function openCreate() {
     setEditingId(null);
@@ -98,8 +162,11 @@ export function UserManagementTab() {
       ic_number: driver.ic_number ?? "",
       role: driver.role,
     });
+    setAssignedVehicleIds([]);
+    setAddVehicleId("");
     setError("");
     setDialogOpen(true);
+    loadAssignments(driver.id);
   }
 
   async function handleSave() {
@@ -195,6 +262,7 @@ export function UserManagementTab() {
                 <TableHead className="hidden md:table-cell">Email</TableHead>
                 <TableHead className="hidden md:table-cell">Phone</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead className="hidden md:table-cell">Vehicles</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-[100px]" />
               </TableRow>
@@ -216,6 +284,19 @@ export function UserManagementTab() {
                     >
                       {driver.role}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {(allAssignments.get(driver.id) ?? []).length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {allAssignments.get(driver.id)!.map((plate) => (
+                          <Badge key={plate} variant="outline" className="text-[10px] font-mono">
+                            {plate}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -255,7 +336,7 @@ export function UserManagementTab() {
               ))}
               {drivers.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     No users yet. Click &quot;Add User&quot; to create one.
                   </TableCell>
                 </TableRow>
@@ -343,6 +424,70 @@ export function UserManagementTab() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Vehicle assignment — show when editing a driver */}
+            {editingId && form.role === "driver" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5" /> Assigned Vehicles
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {assignedVehicleIds.length === 0 && (
+                    <span className="text-xs text-muted-foreground">No vehicles assigned</span>
+                  )}
+                  {assignedVehicleIds.map((vid) => {
+                    const v = allVehicles.find((veh) => veh.id === vid);
+                    return (
+                      <Badge key={vid} variant="secondary" className="gap-1 pr-1">
+                        {v?.plate_number ?? "Unknown"}
+                        <button
+                          type="button"
+                          onClick={() => removeVehicleAssignment(vid)}
+                          className="ml-0.5 rounded-full hover:bg-destructive/20 p-0.5"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Select
+                    value={addVehicleId}
+                    onValueChange={(v) => v && setAddVehicleId(v)}
+                  >
+                    <SelectTrigger className="h-8 text-xs flex-1">
+                      <SelectValue placeholder="Add vehicle...">{
+                        (val: string | null) => {
+                          if (!val) return "Add vehicle...";
+                          const found = allVehicles.find((v) => v.id === val);
+                          return found ? found.plate_number : "Add vehicle...";
+                        }
+                      }</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allVehicles
+                        .filter((v) => !assignedVehicleIds.includes(v.id))
+                        .map((v) => (
+                          <SelectItem key={v.id} value={v.id} label={v.plate_number}>
+                            {v.plate_number} {v.type ? `(${v.type})` : ""}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={addVehicleAssignment}
+                    disabled={!addVehicleId}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
             {error && (
               <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
                 {error}

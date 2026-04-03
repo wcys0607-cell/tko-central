@@ -141,11 +141,9 @@ export default function StockDashboardPage() {
     return <div className="p-6 text-muted-foreground">Loading stock data...</div>;
   }
 
-  const tanks = locations.filter((l) => l.type === "tank");
+  const tanks = locations.filter((l) => l.type === "tank" || l.type === "drum");
   const vehicles = locations.filter((l) => l.type === "vehicle");
-  const others = locations.filter(
-    (l) => l.type !== "tank" && l.type !== "vehicle"
-  );
+  const meters = locations.filter((l) => l.type === "meter");
 
   const totalTank = tanks.reduce((s, l) => s + (l.current_balance ?? 0), 0);
   const totalVehicle = vehicles.reduce(
@@ -303,13 +301,26 @@ export default function StockDashboardPage() {
         </div>
       )}
 
-      {/* Other Locations */}
-      {others.length > 0 && (
+      {/* Meter */}
+      {meters.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold mb-3">Other</h2>
+          <h2 className="text-lg font-semibold mb-3">Meter</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {others.map((loc) => (
-              <FillBar key={loc.id} location={loc} />
+            {meters.map((loc) => (
+              <Card key={loc.id}>
+                <CardContent className="pt-4 pb-3 px-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <div>
+                      <p className="font-semibold text-sm">{loc.name || loc.code}</p>
+                      <p className="text-xs text-muted-foreground">{loc.code}</p>
+                    </div>
+                    <p className="font-bold text-sm">
+                      {(loc.current_balance ?? 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground italic">Reading only</p>
+                </CardContent>
+              </Card>
             ))}
           </div>
         </div>

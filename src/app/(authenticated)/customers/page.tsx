@@ -98,6 +98,35 @@ export default function CustomersPage() {
     setDialogOpen(true);
   }
 
+  // Agent-only edit dialog
+  const [agentDialogOpen, setAgentDialogOpen] = useState(false);
+  const [agentEditCustomer, setAgentEditCustomer] = useState<Customer | null>(null);
+  const [agentEditValue, setAgentEditValue] = useState("");
+  const [agentSaving, setAgentSaving] = useState(false);
+
+  function openAgentEdit(c: Customer) {
+    setAgentEditCustomer(c);
+    setAgentEditValue(c.agent_id ?? "");
+    setAgentDialogOpen(true);
+  }
+
+  async function handleAgentSave() {
+    if (!agentEditCustomer) return;
+    setAgentSaving(true);
+    const { error: err } = await supabase
+      .from("customers")
+      .update({ agent_id: agentEditValue || null, updated_at: new Date().toISOString() })
+      .eq("id", agentEditCustomer.id);
+    if (err) {
+      toast.error(err.message);
+    } else {
+      toast.success("Agent updated");
+      setAgentDialogOpen(false);
+      fetchCustomers();
+    }
+    setAgentSaving(false);
+  }
+
   function openEdit(c: Customer) {
     setEditing(c);
     setForm({
@@ -174,11 +203,39 @@ export default function CustomersPage() {
       ),
     },
     {
+      key: "agent",
+      label: "Agent",
+      className: "whitespace-nowrap",
+      render: (c) => (
+        <span className="text-sm text-muted-foreground">
+          {(c.agent as { name?: string } | null)?.name ?? "—"}
+        </span>
+      ),
+    },
+    {
       key: "bukku",
-      label: "Sync Status",
+      label: "Sync",
       className: "text-center whitespace-nowrap",
       mobileVisible: true,
       render: (c) => <StatusBadge status={c.bukku_sync_status ?? "pending"} type="bukku" />,
+    },
+    {
+      key: "actions",
+      label: "",
+      className: "w-[60px]",
+      render: (c) => (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={(e) => {
+            e.stopPropagation();
+            openAgentEdit(c);
+          }}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      ),
     },
   ];
 
@@ -217,11 +274,11 @@ export default function CustomersPage() {
         emptyMessage={search ? "No customers match your search." : "No customers yet. Add your first customer."}
       />
 
-      {/* Add/Edit Dialog */}
+      {/* Add Customer Dialog (full form) */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Customer" : "Add Customer"}</DialogTitle>
+            <DialogTitle>Add Customer</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div>
@@ -239,57 +296,6 @@ export default function CustomersPage() {
                 onChange={(e) => setForm({ ...form, short_name: e.target.value })}
                 placeholder="For mobile display"
               />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Phone</label>
-              <Input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                placeholder="60xxxxxxxxx"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Email</label>
-              <Input
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                type="email"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Address</label>
-              <Input
-                value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">TIN Number</label>
-              <Input
-                value={form.tin_number}
-                onChange={(e) => setForm({ ...form, tin_number: e.target.value })}
-                placeholder="Tax ID (LHDN)"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">Credit Limit (RM)</label>
-                <Input
-                  value={form.credit_limit}
-                  onChange={(e) => setForm({ ...form, credit_limit: e.target.value })}
-                  type="number"
-                  placeholder="0.00"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Payment Terms (days)</label>
-                <Input
-                  value={form.payment_terms}
-                  onChange={(e) => setForm({ ...form, payment_terms: e.target.value })}
-                  type="number"
-                  placeholder="30"
-                />
-              </div>
             </div>
             <div>
               <label className="text-sm font-medium">Agent</label>
@@ -317,7 +323,44 @@ export default function CustomersPage() {
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90">
-              {saving ? "Saving..." : editing ? "Save Changes" : "Add Customer"}
+              {saving ? "Saving..." : "Add Customer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Agent Dialog (agent field only) */}
+      <Dialog open={agentDialogOpen} onOpenChange={setAgentDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit Agent</DialogTitle>
+            <p className="text-sm text-muted-foreground">{agentEditCustomer?.short_name || agentEditCustomer?.name}</p>
+          </DialogHeader>
+          <div className="py-2">
+            <label className="text-sm font-medium">Agent</label>
+            <Select
+              value={agentEditValue || "_none"}
+              onValueChange={(v) => v && setAgentEditValue(v === "_none" ? "" : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="None">{(v: string | null) => { if (!v || v === "_none") return "None"; return agents.find((a) => a.id === v)?.name ?? v; }}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none" label="None">None</SelectItem>
+                {agents.map((a) => (
+                  <SelectItem key={a.id} value={a.id} label={a.name}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAgentDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAgentSave} disabled={agentSaving} className="bg-primary hover:bg-primary/90">
+              {agentSaving ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

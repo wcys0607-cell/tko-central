@@ -15,6 +15,7 @@ const STATUS_STYLES: Record<StatusType, Record<string, string>> = {
     synced: "bg-status-approved-bg text-status-approved-fg",
     error: "bg-status-rejected-bg text-status-rejected-fg",
     skipped: "bg-status-cancelled-bg text-status-cancelled-fg",
+    voided: "bg-status-cancelled-bg text-status-cancelled-fg",
   },
   payment: {
     paid: "bg-status-approved-bg text-status-approved-fg",

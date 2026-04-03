@@ -8,6 +8,7 @@ import {
   buildWeekendMessage,
   buildBigOrderMessage,
 } from "@/lib/whatsapp";
+import { voidBukkuChain } from "@/lib/bukku/invoices";
 
 const VALID_ACTIONS = ["approve", "reject", "cancel"] as const;
 type OrderAction = (typeof VALID_ACTIONS)[number];
@@ -150,7 +151,18 @@ export async function PATCH(
       .eq("id", id);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true, has_bukku_so: hasBukkuSO });
+
+    // Auto-void the entire Bukku chain (INV → DN → SO)
+    let voidResult = null;
+    if (hasBukkuSO) {
+      voidResult = await voidBukkuChain(id);
+    }
+
+    return NextResponse.json({
+      success: true,
+      has_bukku_so: hasBukkuSO,
+      bukku_void: voidResult,
+    });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
@@ -172,7 +184,7 @@ export async function POST(
 
   const { data: order, error: fetchErr } = await supabase
     .from("orders")
-    .select("*, customer:customer_id(id,name), creator:created_by(id,name)")
+    .select("*, customer:customer_id(id,name,short_name), creator:created_by(id,name)")
     .eq("id", id)
     .single();
 
@@ -194,7 +206,7 @@ export async function POST(
   const bigOrderThreshold = parseInt(cfg["BIG_ORDER_THRESHOLD"] ?? "5000");
   const lateHour = parseInt(cfg["LATE_ENTRY_CUTOFF_HOUR"] ?? "17");
 
-  const customer = order.customer as { name?: string } | null;
+  const customer = order.customer as { name?: string; short_name?: string } | null;
   const creator = order.creator as { name?: string } | null;
 
   // Use Malaysia timezone (UTC+8) for date comparisons
@@ -207,16 +219,40 @@ export async function POST(
   const currentHour = nowMY.getHours();
   const dayOfWeek = nowMY.getDay();
 
-  const qty = order.quantity_liters ?? 0;
+  // Sum only fuel quantities (exclude transport charges) for notification
+  const { data: orderItems } = await supabase
+    .from("order_items")
+    .select("quantity_liters, product:product_id(name, unit)")
+    .eq("order_id", id);
+
+  let qty: number;
+  if (orderItems && orderItems.length > 0) {
+    qty = orderItems
+      .filter((i) => !(i.product as { name?: string } | null)?.name?.startsWith("TRANSPORTATION"))
+      .reduce((sum, i) => sum + (i.quantity_liters ?? 0), 0);
+  } else {
+    qty = order.quantity_liters ?? 0;
+  }
   const unitPrice = order.unit_price ?? 0;
+
+  // Build item lines for notification
+  const itemLines = (orderItems ?? []).map((i) => {
+    const prod = i.product as { name?: string; unit?: string } | null;
+    const name = prod?.name ?? "—";
+    const unit = prod?.unit ?? "L";
+    return `  - ${name}: ${(i.quantity_liters ?? 0).toLocaleString()} ${unit}`;
+  }).join("\n");
 
   const msgParams = {
     orderId: id,
-    customerName: customer?.name ?? "",
+    customerName: customer?.short_name || customer?.name || "",
     destination: order.destination ?? "",
     quantityLiters: qty,
     creatorName: creator?.name ?? "Staff",
     managerPhone,
+    orderDate: order.order_date ?? "—",
+    itemLines: itemLines || undefined,
+    deliveryRemark: order.delivery_remark || undefined,
   };
 
   const notifications: Promise<unknown>[] = [];

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendWhatsApp } from "@/lib/whatsapp";
+import { getRecipients } from "@/lib/notification-recipients";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -55,13 +56,13 @@ export async function POST(req: NextRequest) {
           `Please verify immediately.`,
         ].join("\n");
 
-        // Send to Nelson and Fook
-        for (const phone of ["60127681224", "60197260488"]) {
+        const maintRecipients = await getRecipients(supabase, "MAINTENANCE_ALERT_RECIPIENTS");
+        for (const r of maintRecipients) {
           await sendWhatsApp({
-            phone,
+            phone: r.phone,
             message: msg,
             type: "maintenance_due",
-            recipientName: phone === "60127681224" ? "Nelson" : "Fook",
+            recipientName: r.name,
             referenceId: vehicleId,
           });
         }
@@ -81,12 +82,13 @@ export async function POST(req: NextRequest) {
       `Please verify immediately.`,
     ].join("\n");
 
-    for (const phone of ["60127681224", "60197260488"]) {
+    const defectRecipients = await getRecipients(supabase, "MAINTENANCE_ALERT_RECIPIENTS");
+    for (const r of defectRecipients) {
       await sendWhatsApp({
-        phone,
+        phone: r.phone,
         message: msg,
         type: "vehicle_defect",
-        recipientName: phone === "60127681224" ? "Nelson" : "Fook",
+        recipientName: r.name,
         referenceId: vehicleId,
       });
     }

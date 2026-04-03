@@ -130,24 +130,48 @@ interface OrderNotifyParams {
   creatorName: string;
   managerPhone: string;
   creatorPhone?: string;
+  orderDate?: string;
+  itemLines?: string;
+  deliveryRemark?: string;
+}
+
+function formatOrderBody(p: OrderNotifyParams): string {
+  const dest = p.destination.split("\n")[0].trim();
+  const lines = [
+    ``,
+    `📅 Date: ${p.orderDate ?? "—"}`,
+    `👤 Customer: ${p.customerName}`,
+    `📍 Destination: ${dest}`,
+    ``,
+    `📦 Qty: ${p.quantityLiters.toLocaleString()}L`,
+  ];
+  if (p.itemLines) {
+    lines.pop(); // remove simple qty line
+    lines.push(`📦 Items:`);
+    lines.push(p.itemLines);
+  }
+  lines.push(``);
+  lines.push(`👷 Created by: ${p.creatorName}`);
+  if (p.deliveryRemark) lines.push(`📝 Remark: ${p.deliveryRemark}`);
+  return lines.join("\n");
 }
 
 export function buildUrgentTodayMessage(p: OrderNotifyParams): string {
-  return `🚨 *URGENT: TODAY Order*\nFrom: ${p.creatorName}\nCustomer: ${p.customerName}\nQty: ${p.quantityLiters.toLocaleString()}L\nDest: ${p.destination}`;
+  return `🚨 *URGENT: TODAY Order*` + formatOrderBody(p);
 }
 
 export function buildLateEntryMessage(p: OrderNotifyParams): string {
-  return `⚠️ *LATE ENTRY: Tomorrow Order*\nFrom: ${p.creatorName}\nCustomer: ${p.customerName}\nQty: ${p.quantityLiters.toLocaleString()}L\nDest: ${p.destination}`;
+  return `⚠️ *LATE ENTRY: Tomorrow Order*` + formatOrderBody(p);
 }
 
 export function buildWeekendMessage(p: OrderNotifyParams): string {
-  return `⚠️ *WEEKEND: Monday Order*\nFrom: ${p.creatorName}\nCustomer: ${p.customerName}\nQty: ${p.quantityLiters.toLocaleString()}L\nDest: ${p.destination}`;
+  return `⚠️ *WEEKEND: Monday Order*` + formatOrderBody(p);
 }
 
 export function buildBigOrderMessage(p: OrderNotifyParams): string {
-  return `📦 *BIG ORDER: Stock Preparation*\nFrom: ${p.creatorName}\nCustomer: ${p.customerName}\nQty: ${p.quantityLiters.toLocaleString()}L\nDest: ${p.destination}`;
+  return `📦 *BIG ORDER: Stock Preparation*` + formatOrderBody(p);
 }
 
 export function buildRejectedMessage(p: OrderNotifyParams): string {
-  return `❌ *ORDER REJECTED*\nManager has rejected your entry.\nCustomer: ${p.customerName}\nQty: ${p.quantityLiters.toLocaleString()}L\nDest: ${p.destination}`;
+  return `❌ *ORDER REJECTED*\nManager has rejected your entry.` + formatOrderBody(p);
 }

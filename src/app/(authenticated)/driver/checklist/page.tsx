@@ -41,25 +41,42 @@ export default function DriverChecklistPage() {
   const [loading, setLoading] = useState(true);
 
   const loadVehicles = useCallback(async () => {
-    const { data } = await supabase
-      .from("vehicles")
-      .select("*")
-      .eq("is_active", true)
-      .order("plate_number");
-    if (data) {
-      setVehicles(data);
-      // Auto-select assigned vehicle
-      if (driverProfile?.id) {
-        const { data: driver } = await supabase
-          .from("drivers")
-          .select("assigned_vehicle_id")
-          .eq("id", driverProfile.id)
-          .single();
-        if (driver?.assigned_vehicle_id) {
-          setSelectedVehicle(driver.assigned_vehicle_id);
+    if (!driverProfile?.id) { setLoading(false); return; }
+
+    // Check if user is a driver — if so, only show assigned vehicles
+    const isDriver = driverProfile.role === "driver";
+
+    if (isDriver) {
+      // Load only assigned vehicles from junction table
+      const { data: assignments } = await supabase
+        .from("driver_vehicle_assignments")
+        .select("vehicle_id")
+        .eq("driver_id", driverProfile.id);
+
+      const vehicleIds = (assignments ?? []).map((a: { vehicle_id: string }) => a.vehicle_id);
+
+      if (vehicleIds.length > 0) {
+        const { data } = await supabase
+          .from("vehicles")
+          .select("*")
+          .in("id", vehicleIds)
+          .eq("is_active", true)
+          .order("plate_number");
+        if (data) {
+          setVehicles(data);
+          if (data.length === 1) setSelectedVehicle(data[0].id);
         }
       }
+    } else {
+      // Admin/manager/office: show all vehicles
+      const { data } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("is_active", true)
+        .order("plate_number");
+      if (data) setVehicles(data);
     }
+
     setLoading(false);
   }, [supabase, driverProfile]);
 

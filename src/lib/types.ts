@@ -102,12 +102,16 @@ export interface Order {
   delivery_remark: string | null;
   remark: string | null;
   bukku_so_id: number | null;
+  bukku_so_number: string | null;
   bukku_do_id: number | null;
+  bukku_do_number: string | null;
+  bukku_invoice_id: number | null;
+  bukku_invoice_number: string | null;
+  bukku_short_link: string | null;
+  bukku_sync_status: "pending" | "synced" | "error" | "skipped" | "voided" | null;
+  bukku_payment_status: "paid" | "partial" | "unpaid" | "overdue" | null;
   created_by: string | null;
   approved_by: string | null;
-  bukku_invoice_id: number | null;
-  bukku_sync_status: "pending" | "synced" | "error" | "skipped" | null;
-  bukku_payment_status: "paid" | "partial" | "unpaid" | "overdue" | null;
   stock_sync_status: "pending" | "synced" | null;
   smart_do_number: string | null;
   references_number: string | null;
@@ -220,10 +224,23 @@ export interface StockHistory {
   location?: Pick<StockLocation, "id" | "code" | "name"> | null;
 }
 
+export interface StockTakeSession {
+  id: string;
+  date: string;
+  notes: string | null;
+  photos: string[];
+  taken_by: string | null;
+  created_at: string;
+  // joined
+  taker?: Pick<Driver, "id" | "name"> | null;
+  entries?: StockTake[];
+}
+
 export interface StockTake {
   id: string;
   date: string;
   location_id: string;
+  session_id: string | null;
   measured_liters: number | null;
   system_liters: number | null;
   variance: number | null;
@@ -232,7 +249,7 @@ export interface StockTake {
   notes: string | null;
   created_at: string;
   // joined
-  location?: Pick<StockLocation, "id" | "code" | "name"> | null;
+  location?: Pick<StockLocation, "id" | "code" | "name" | "type"> | null;
   taker?: Pick<Driver, "id" | "name"> | null;
 }
 

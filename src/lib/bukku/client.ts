@@ -7,7 +7,7 @@ export interface BukkuConfig {
 }
 
 interface BukkuRequestOptions {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   path: string;
   params?: Record<string, string | number>;
   body?: unknown;
@@ -101,7 +101,8 @@ export async function bukkuFetchAll<T>(
   config: BukkuConfig,
   path: string,
   dataKey: string,
-  params?: Record<string, string | number>
+  params?: Record<string, string | number>,
+  maxPages?: number
 ): Promise<{ ok: boolean; data: T[]; error?: string }> {
   const allData: T[] = [];
   let page = 1;
@@ -122,6 +123,9 @@ export async function bukkuFetchAll<T>(
 
     // If no items returned, we've reached the end
     if (items.length === 0) break;
+
+    // Stop if we've hit the max pages limit
+    if (maxPages && page >= maxPages) break;
 
     // Bukku pagination: { paging: { current_page, per_page, total } }
     const paging = res.data?.["paging"] as { current_page?: number; per_page?: number; total?: number } | undefined;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendWhatsApp } from "@/lib/whatsapp";
+import { getRecipients, filterByDocType } from "@/lib/notification-recipients";
 
 export async function POST(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -17,20 +18,25 @@ export async function POST(req: NextRequest) {
 
   const today = new Date().toISOString().split("T")[0];
 
-  // Get all fleet documents with vehicle info
+  // Get all fleet documents with vehicle info (exclude "Others" type vehicles)
   const { data: docs } = await supabase
     .from("fleet_documents")
-    .select("*, vehicle:vehicles!fleet_documents_vehicle_id_fkey(id, plate_number)")
+    .select("*, vehicle:vehicles!fleet_documents_vehicle_id_fkey(id, plate_number, type)")
     .not("expiry_date", "is", null);
 
-  if (!docs || docs.length === 0) {
+  // Filter out "Others" vehicles (CYL, SELF COLLECTION, etc.)
+  const filteredDocs = (docs ?? []).filter(
+    (d) => d.vehicle?.type !== "Others"
+  );
+
+  if (filteredDocs.length === 0) {
     return NextResponse.json({ message: "No documents to check", alerts: 0 });
   }
 
   let updatedCount = 0;
   let alertCount = 0;
 
-  for (const doc of docs) {
+  for (const doc of filteredDocs) {
     const expiryDate = new Date(doc.expiry_date);
     const todayDate = new Date(today);
     const daysRemaining = Math.ceil(
@@ -48,28 +54,29 @@ export async function POST(req: NextRequest) {
       .eq("id", doc.id);
     updatedCount++;
 
-    // Send alerts for documents expiring within 30 days and not already alerted
-    if (daysRemaining <= 30 && !doc.alert_sent) {
+    // Send alerts at 30 days and 7 days before expiry
+    // alert_sent = first alert (30 days), last_alert_date tracks when last sent
+    const shouldSend30Day = daysRemaining <= 30 && daysRemaining > 7 && !doc.alert_sent;
+    const shouldSend7Day = daysRemaining <= 7 && daysRemaining >= 0 && doc.last_alert_date !== today
+      && (!doc.last_alert_date || doc.last_alert_date < today);
+    const shouldSendExpired = daysRemaining < 0 && doc.last_alert_date !== today
+      && (!doc.last_alert_date || doc.last_alert_date < today) && !doc.alert_sent;
+
+    if (shouldSend30Day || shouldSend7Day || shouldSendExpired) {
       const plateNumber = doc.vehicle?.plate_number ?? "Unknown";
+      const urgency = daysRemaining < 0 ? "‼️ EXPIRED" : daysRemaining <= 7 ? "⚠️ URGENT" : "🚨 REMINDER";
       const message = [
-        `🚨 *Document Expiry Alert* 🚨`,
-        `🚛 Truck: ${plateNumber}`,
+        `${urgency} *Document Expiry Alert*`,
+        `🚛 Vehicle: ${plateNumber}`,
         `📄 Document: ${doc.doc_type}`,
         `📅 Expiry: ${expiryDate.toLocaleDateString("en-MY")}`,
         `⏳ Days Left: ${daysRemaining < 0 ? "EXPIRED" : daysRemaining}`,
-        `Please arrange for renewal.`,
+        daysRemaining <= 7 ? `*Please renew immediately.*` : `Please arrange for renewal.`,
       ].join("\n");
 
-      // Determine recipients based on doc type
-      const recipients: { phone: string; name: string }[] = [
-        { phone: "60175502007", name: "Wilson" },
-        { phone: "60127681224", name: "Nelson" },
-      ];
-
-      // Ck Chen only gets Road Tax and Insurance alerts
-      if (doc.doc_type === "Road Tax" || doc.doc_type === "Insurance") {
-        recipients.push({ phone: "60137535544", name: "Ck Chen" });
-      }
+      // Determine recipients from app_config (filtered by doc type)
+      const allRecipients = await getRecipients(supabase, "FLEET_EXPIRY_RECIPIENTS");
+      const recipients = filterByDocType(allRecipients, doc.doc_type);
 
       for (const r of recipients) {
         await sendWhatsApp({

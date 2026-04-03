@@ -129,7 +129,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     if (!res.ok) {
       toast.error(data.error || "Action failed");
     } else if (action === "cancel" && data.has_bukku_so) {
-      toast.success("Order cancelled. Please void the SO manually in Bukku.");
+      if (data.bukku_void?.ok) {
+        toast.success(`Order cancelled. Voided in Bukku: ${data.bukku_void.voided.join(", ")}`);
+      } else if (data.bukku_void?.error) {
+        toast.error(`Order cancelled but Bukku void failed: ${data.bukku_void.error}`);
+      } else {
+        toast.success("Order cancelled.");
+      }
     }
     if (action === "reject") setRejectDialogOpen(false);
     setRejectReason("");
@@ -140,9 +146,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const handleApprove = () => callOrderApi("approve");
   const handleReject = () => callOrderApi("reject", rejectReason);
   const handleCancel = () => {
-    const hasBukkuSO = !!(order as unknown as { bukku_so_id?: number })?.bukku_so_id;
+    const hasBukkuSO = !!order?.bukku_so_id;
     const msg = hasBukkuSO
-      ? "Cancel this order? You will need to void the SO manually in Bukku."
+      ? "Cancel this order? This will also void all linked documents (SO/DN/INV) in Bukku."
       : "Cancel this order?";
     if (confirm(msg)) callOrderApi("cancel");
   };
@@ -377,7 +383,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Bukku SO</span>
-                    <span className="text-sm text-green-600 font-medium">{(order as unknown as { bukku_so_number?: string }).bukku_so_number ?? "Synced"}</span>
+                    <span className="text-sm text-green-600 font-medium">{order.bukku_so_number ?? "Synced"}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">SO Document</span>
@@ -393,13 +399,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         <Download className="h-3 w-3" />
                         PDF
                       </Button>
-                      {(order as unknown as { bukku_short_link?: string }).bukku_short_link && (
+                      {order.bukku_short_link && (
                         <Button
                           variant="outline"
                           size="sm"
                           className="h-6 text-xs gap-1"
                           onClick={() => {
-                            window.open((order as unknown as { bukku_short_link: string }).bukku_short_link, "_blank");
+                            window.open(order.bukku_short_link!, "_blank");
                           }}
                         >
                           <ExternalLink className="h-3 w-3" />
@@ -409,6 +415,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     </div>
                   </div>
                 </>
+              )}
+              {order.bukku_do_number && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Bukku DN</span>
+                  <span className="text-sm text-green-600 font-medium">{order.bukku_do_number}</span>
+                </div>
+              )}
+              {order.bukku_invoice_number && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Bukku Invoice</span>
+                  <span className="text-sm text-green-600 font-medium">{order.bukku_invoice_number}</span>
+                </div>
               )}
               {order.bukku_payment_status && (
                 <div className="flex justify-between items-center">

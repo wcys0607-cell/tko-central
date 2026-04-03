@@ -1,29 +1,64 @@
 import { createClient } from "@supabase/supabase-js";
-import { getBukkuConfig, bukkuFetch, bukkuFetchPdf, type BukkuConfig } from "./client";
+import { getBukkuConfig, bukkuFetch, bukkuFetchPdf, bukkuFetchAll, type BukkuConfig } from "./client";
 
-interface BukkuInvoice {
+interface BukkuFormItem {
+  transfer_transaction?: {
+    id: number;
+    number?: string;
+    type?: string;
+    date?: string;
+    progress?: number;
+  } | null;
+}
+
+/** List endpoint returns these fields (no form_items) */
+interface BukkuTransactionListItem {
   id: number;
   number?: string;
+  contact_id?: number;
+  date?: string;
+  status?: string;
+  amount?: number;
+}
+
+/** Detail endpoint returns full transaction with form_items */
+interface BukkuTransaction {
+  id: number;
+  number?: string;
+  number2?: string;
   status?: string;
   amount?: number;
   balance?: number;
   date?: string;
+  contact_id?: number;
+  form_items?: BukkuFormItem[];
   term_items?: { date: string; amount: number; balance: number }[];
-  payments?: { number?: string; date?: string; amount?: number }[];
+  linked_items?: { type?: string; number?: string }[];
 }
 
 interface InvoiceSyncResult {
+  linked_dn: number;
+  linked_inv: number;
   updated: number;
   overdue: number;
   failed: number;
   errors: string[];
 }
 
-/** Pull payment status from Bukku for all orders that have bukku_invoice_id */
+/**
+ * Trace the full chain: SO → DN → INV → Payment
+ *
+ * 1. For orders with bukku_so_id but no bukku_do_id:
+ *    Scan Bukku DNs to find one converted from our SO (via form_items.transfer_transaction)
+ * 2. For orders with bukku_do_id but no bukku_invoice_id:
+ *    Scan Bukku Invoices to find one converted from our DN (via form_items.transfer_transaction)
+ * 3. For orders with bukku_invoice_id:
+ *    Sync payment status from the invoice
+ */
 export async function syncInvoiceStatus(): Promise<InvoiceSyncResult> {
   const config = await getBukkuConfig();
   if (!config) {
-    return { updated: 0, overdue: 0, failed: 0, errors: ["Bukku not configured"] };
+    return { linked_dn: 0, linked_inv: 0, updated: 0, overdue: 0, failed: 0, errors: ["Bukku not configured"] };
   }
 
   const supabase = createClient(
@@ -31,21 +66,123 @@ export async function syncInvoiceStatus(): Promise<InvoiceSyncResult> {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // Get all orders with bukku_invoice_id
-  const { data: orders } = await supabase
-    .from("orders")
-    .select("id, bukku_invoice_id, customer_id, invoice_number, receipt_no")
-    .not("bukku_invoice_id", "is", null);
+  const result: InvoiceSyncResult = { linked_dn: 0, linked_inv: 0, updated: 0, overdue: 0, failed: 0, errors: [] };
 
-  if (!orders || orders.length === 0) {
-    return { updated: 0, overdue: 0, failed: 0, errors: [] };
+  // ── Step 1: Link SO → DN ──
+  // List endpoint does NOT return form_items. Strategy:
+  // 1. Get orders needing DN, with their customer's bukku_contact_id
+  // 2. Fetch recent DN list (has contact_id)
+  // 3. For DNs matching a customer, fetch detail to check transfer_transaction
+  const { data: needDn } = await supabase
+    .from("orders")
+    .select("id, bukku_so_id, customer:customers!orders_customer_id_fkey(bukku_contact_id)")
+    .not("bukku_so_id", "is", null)
+    .is("bukku_do_id", null)
+    .not("status", "eq", "cancelled");
+
+  if (needDn && needDn.length > 0) {
+    const soIdToOrderId = new Map<number, string>();
+    const contactToSoIds = new Map<number, number[]>();
+    for (const o of needDn) {
+      soIdToOrderId.set(o.bukku_so_id, o.id);
+      const contactId = (o.customer as { bukku_contact_id?: number } | null)?.bukku_contact_id;
+      if (contactId) {
+        const existing = contactToSoIds.get(contactId) ?? [];
+        existing.push(o.bukku_so_id);
+        contactToSoIds.set(contactId, existing);
+      }
+    }
+
+    // Fetch recent DN list (no form_items, but has contact_id)
+    const dnListRes = await bukkuFetchAll<BukkuTransactionListItem>(config, "/sales/delivery_orders", "transactions", { per_page: 100 }, 2);
+    if (dnListRes.ok) {
+      for (const dn of dnListRes.data) {
+        // Skip if contact doesn't match any of our orders
+        if (!dn.contact_id || !contactToSoIds.has(dn.contact_id)) continue;
+
+        // Fetch DN detail to get form_items with transfer_transaction
+        const detailRes = await bukkuFetch<{ transaction: BukkuTransaction }>(config, {
+          path: `/sales/delivery_orders/${dn.id}`,
+        });
+        if (!detailRes.ok || !detailRes.data?.transaction) continue;
+
+        const dnDetail = detailRes.data.transaction;
+        const soRef = dnDetail.form_items?.find((i) => i.transfer_transaction?.type === "sale_order")?.transfer_transaction;
+        if (soRef && soIdToOrderId.has(soRef.id)) {
+          const orderId = soIdToOrderId.get(soRef.id)!;
+          await supabase.from("orders").update({
+            bukku_do_id: dnDetail.id,
+            bukku_do_number: dnDetail.number,
+            dn_number: dnDetail.number,
+          }).eq("id", orderId);
+          soIdToOrderId.delete(soRef.id);
+          result.linked_dn++;
+        }
+      }
+    }
   }
 
-  const result: InvoiceSyncResult = { updated: 0, overdue: 0, failed: 0, errors: [] };
+  // ── Step 2: Link DN → Invoice ──
+  // Same strategy: match by contact_id first, then fetch detail
+  const { data: needInv } = await supabase
+    .from("orders")
+    .select("id, bukku_do_id, customer:customers!orders_customer_id_fkey(bukku_contact_id)")
+    .not("bukku_do_id", "is", null)
+    .is("bukku_invoice_id", null)
+    .not("status", "eq", "cancelled");
+
+  if (needInv && needInv.length > 0) {
+    const doIdToOrderId = new Map<number, string>();
+    const contactToDoIds = new Map<number, number[]>();
+    for (const o of needInv) {
+      doIdToOrderId.set(o.bukku_do_id, o.id);
+      const contactId = (o.customer as { bukku_contact_id?: number } | null)?.bukku_contact_id;
+      if (contactId) {
+        const existing = contactToDoIds.get(contactId) ?? [];
+        existing.push(o.bukku_do_id);
+        contactToDoIds.set(contactId, existing);
+      }
+    }
+
+    const invListRes = await bukkuFetchAll<BukkuTransactionListItem>(config, "/sales/invoices", "transactions", { per_page: 100 }, 2);
+    if (invListRes.ok) {
+      for (const inv of invListRes.data) {
+        if (!inv.contact_id || !contactToDoIds.has(inv.contact_id)) continue;
+
+        const detailRes = await bukkuFetch<{ transaction: BukkuTransaction }>(config, {
+          path: `/sales/invoices/${inv.id}`,
+        });
+        if (!detailRes.ok || !detailRes.data?.transaction) continue;
+
+        const invDetail = detailRes.data.transaction;
+        const dnRef = invDetail.form_items?.find((i) => i.transfer_transaction?.type === "sale_delivery_order")?.transfer_transaction;
+        if (dnRef && doIdToOrderId.has(dnRef.id)) {
+          const orderId = doIdToOrderId.get(dnRef.id)!;
+          await supabase.from("orders").update({
+            bukku_invoice_id: invDetail.id,
+            bukku_invoice_number: invDetail.number,
+            invoice_number: invDetail.number,
+          }).eq("id", orderId);
+          doIdToOrderId.delete(dnRef.id);
+          result.linked_inv++;
+        }
+      }
+    }
+  }
+
+  // ── Step 3: Sync payment status for linked invoices ──
+  // Skip cancelled/voided orders — their Bukku docs may no longer exist
+  const { data: withInv } = await supabase
+    .from("orders")
+    .select("id, bukku_invoice_id, invoice_number, receipt_no")
+    .not("bukku_invoice_id", "is", null)
+    .not("status", "eq", "cancelled")
+    .not("bukku_sync_status", "eq", "voided");
+
   const today = new Date();
 
-  for (const order of orders) {
-    const res = await bukkuFetch<{ transaction: BukkuInvoice }>(config, {
+  for (const order of withInv ?? []) {
+    const res = await bukkuFetch<{ transaction: BukkuTransaction }>(config, {
       path: `/sales/invoices/${order.bukku_invoice_id}`,
     });
 
@@ -55,12 +192,8 @@ export async function syncInvoiceStatus(): Promise<InvoiceSyncResult> {
       continue;
     }
 
-    // Bukku returns single invoice as { transaction: {...} }
     const invoice = res.data?.transaction;
-    if (!invoice) {
-      result.failed++;
-      continue;
-    }
+    if (!invoice) { result.failed++; continue; }
 
     // Determine payment status
     let paymentStatus: string;
@@ -72,7 +205,6 @@ export async function syncInvoiceStatus(): Promise<InvoiceSyncResult> {
     } else if (balanceDue < total) {
       paymentStatus = "partial";
     } else {
-      // Check if overdue — due date from term_items or invoice date
       const dueDateStr = invoice.term_items?.[0]?.date ?? invoice.date;
       const dueDate = dueDateStr ? new Date(dueDateStr) : null;
       if (dueDate && dueDate < today) {
@@ -83,29 +215,113 @@ export async function syncInvoiceStatus(): Promise<InvoiceSyncResult> {
       }
     }
 
-    // Build update payload — sync invoice number and receipt number from Bukku
     const updatePayload: Record<string, unknown> = { bukku_payment_status: paymentStatus };
 
-    // Sync invoice number if finalized (has a number and not draft)
+    // Sync invoice number
     if (invoice.number && invoice.status !== "draft" && !order.invoice_number) {
       updatePayload.invoice_number = invoice.number;
+      updatePayload.bukku_invoice_number = invoice.number;
     }
 
-    // Sync receipt number from payments
-    if (invoice.payments && invoice.payments.length > 0 && !order.receipt_no) {
-      const receiptNos = invoice.payments.map((p) => p.number).filter(Boolean).join(", ");
+    // Sync receipt number from linked payments
+    if (invoice.linked_items && invoice.linked_items.length > 0 && !order.receipt_no) {
+      const receiptNos = invoice.linked_items
+        .filter((li) => li.type === "sale_payment" && li.number)
+        .map((li) => li.number)
+        .join(", ");
       if (receiptNos) updatePayload.receipt_no = receiptNos;
     }
 
-    await supabase
-      .from("orders")
-      .update(updatePayload)
-      .eq("id", order.id);
-
+    await supabase.from("orders").update(updatePayload).eq("id", order.id);
     result.updated++;
   }
 
   return result;
+}
+
+/**
+ * Void the entire Bukku chain for an order (INV → DN → SO).
+ * Must void in reverse order: Invoice first, then DN, then SO.
+ * Bukku won't allow voiding a parent if children still exist.
+ */
+export async function voidBukkuChain(orderId: string): Promise<{
+  ok: boolean;
+  voided: string[];
+  error?: string;
+}> {
+  const config = await getBukkuConfig();
+  if (!config) return { ok: false, voided: [], error: "Bukku not configured" };
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, bukku_so_id, bukku_do_id, bukku_invoice_id, bukku_invoice_number, bukku_do_number, bukku_so_number")
+    .eq("id", orderId)
+    .single();
+
+  if (!order) return { ok: false, voided: [], error: "Order not found" };
+
+  const voided: string[] = [];
+
+  // Helper: PATCH with { status: "void" } — Bukku's void method
+  async function voidTransaction(
+    endpoint: string,
+    bukkuId: number,
+    label: string
+  ): Promise<string | null> {
+    const res = await bukkuFetch<Record<string, unknown>>(config!, {
+      method: "PATCH",
+      path: `${endpoint}/${bukkuId}`,
+      body: { status: "void" },
+    });
+    if (!res.ok) {
+      return `Failed to void ${label}: ${res.error}`;
+    }
+    return null; // success
+  }
+
+  // Step 1: Void Invoice first (bottom of chain)
+  if (order.bukku_invoice_id) {
+    const label = `Invoice ${order.bukku_invoice_number ?? order.bukku_invoice_id}`;
+    const err = await voidTransaction("/sales/invoices", order.bukku_invoice_id, label);
+    if (err) return { ok: false, voided, error: err };
+    voided.push(label);
+  }
+
+  // Step 2: Void DN
+  if (order.bukku_do_id) {
+    const label = `DN ${order.bukku_do_number ?? order.bukku_do_id}`;
+    const err = await voidTransaction("/sales/delivery_orders", order.bukku_do_id, label);
+    if (err) return { ok: false, voided, error: err };
+    voided.push(label);
+  }
+
+  // Step 3: Void SO (top of chain)
+  if (order.bukku_so_id) {
+    const label = `SO ${order.bukku_so_number ?? order.bukku_so_id}`;
+    const err = await voidTransaction("/sales/orders", order.bukku_so_id, label);
+    if (err) return { ok: false, voided, error: err };
+    voided.push(label);
+  }
+
+  // Clear Bukku chain fields on the order
+  await supabase.from("orders").update({
+    bukku_so_id: null,
+    bukku_so_number: null,
+    bukku_do_id: null,
+    bukku_do_number: null,
+    bukku_invoice_id: null,
+    bukku_invoice_number: null,
+    bukku_payment_status: null,
+    bukku_short_link: null,
+    bukku_sync_status: "voided",
+  }).eq("id", orderId);
+
+  return { ok: true, voided };
 }
 
 interface PushResult {

@@ -27,7 +27,7 @@ export async function POST() {
   );
   await admin.from("notifications_log").insert({
     type: "bukku_sync_invoices",
-    message: `Invoice sync: ${result.updated} updated, ${result.overdue} overdue, ${result.failed} failed`,
+    message: `Chain sync: ${result.linked_dn} DN linked, ${result.linked_inv} INV linked, ${result.updated} payment updated, ${result.overdue} overdue, ${result.failed} failed`,
     status: result.failed === 0 ? "sent" : "failed",
     sent_at: new Date().toISOString(),
   });

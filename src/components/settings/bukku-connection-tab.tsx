@@ -139,10 +139,18 @@ export function BukkuConnectionTab() {
         },
       }));
 
-      setStatusMessage(
-        `${type}: ${json.matched ?? 0} matched, ${json.created ?? 0} created` +
-          (json.failed ? `, ${json.failed} failed` : "")
-      );
+      if (type === "invoices") {
+        setStatusMessage(
+          `Chain sync: ${json.linked_dn ?? 0} DN linked, ${json.linked_inv ?? 0} INV linked, ${json.updated ?? 0} payment updated` +
+            (json.overdue ? `, ${json.overdue} overdue` : "") +
+            (json.failed ? `, ${json.failed} failed` : "")
+        );
+      } else {
+        setStatusMessage(
+          `${type}: ${json.matched ?? 0} matched, ${json.created ?? 0} created` +
+            (json.failed ? `, ${json.failed} failed` : "")
+        );
+      }
     } catch {
       setSyncStatus((prev) => ({
         ...prev,
@@ -280,7 +288,7 @@ export function BukkuConnectionTab() {
               [
                 { key: "contacts", label: "Contacts" },
                 { key: "products", label: "Products" },
-                { key: "invoices", label: "Invoice Status" },
+                { key: "invoices", label: "Chain Tracker (SO → DN → INV)" },
               ] as const
             ).map(({ key, label }) => (
               <div

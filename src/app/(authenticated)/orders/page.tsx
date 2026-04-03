@@ -18,7 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Send } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Plus, Search, Send, MessageSquare, Check } from "lucide-react";
 import { format } from "date-fns";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "sonner";
@@ -58,8 +64,9 @@ export default function OrdersPage() {
   const [productMap, setProductMap] = useState<Record<string, string>>({});
   const [driverMap, setDriverMap] = useState<Record<string, string>>({});
   const [vehicleMap, setVehicleMap] = useState<Record<string, string>>({});
-  const [driverList, setDriverList] = useState<{ id: string; name: string }[]>([]);
+  const [driverList, setDriverList] = useState<{ id: string; name: string; role?: string }[]>([]);
   const [vehicleList, setVehicleList] = useState<{ id: string; plate_number: string }[]>([]);
+  const [sentOrders, setSentOrders] = useState<Set<string>>(new Set());
 
   // Load lookup maps once
   useEffect(() => {
@@ -67,7 +74,7 @@ export default function OrdersPage() {
       const [c, p, d, v] = await Promise.all([
         supabase.from("customers").select("id, name, short_name").limit(10000),
         supabase.from("products").select("id, name").limit(10000),
-        supabase.from("drivers").select("id, name").order("name").limit(10000),
+        supabase.from("drivers").select("id, name, role").order("name").limit(10000),
         supabase.from("vehicles").select("id, plate_number, type").order("plate_number").limit(10000),
       ]);
       const cm: Record<string, string> = {};
@@ -78,7 +85,7 @@ export default function OrdersPage() {
       const pm: Record<string, string> = {};
       for (const row of (p.data ?? []) as { id: string; name: string }[]) pm[row.id] = row.name;
       setProductMap(pm);
-      const driverRows = (d.data ?? []) as { id: string; name: string }[];
+      const driverRows = (d.data ?? []) as { id: string; name: string; role?: string }[];
       const dm: Record<string, string> = {};
       for (const row of driverRows) dm[row.id] = row.name;
       setDriverMap(dm);
@@ -119,8 +126,24 @@ export default function OrdersPage() {
     }
 
     const { data, count } = await query;
-    setOrders((data as Order[]) ?? []);
+    const orderList = (data as Order[]) ?? [];
+    setOrders(orderList);
     setTotal(count ?? 0);
+
+    // Check which orders have been sent to driver
+    const orderIds = orderList.filter((o) => o.driver_id).map((o) => o.id);
+    if (orderIds.length > 0) {
+      const { data: logs } = await supabase
+        .from("notifications_log")
+        .select("reference_id")
+        .eq("type", "delivery_to_driver")
+        .eq("status", "sent")
+        .in("reference_id", orderIds);
+      setSentOrders(new Set((logs ?? []).map((l: { reference_id: string }) => l.reference_id)));
+    } else {
+      setSentOrders(new Set());
+    }
+
     setLoading(false);
   }, [supabase, page, statusFilter, dateFrom, dateTo, search]);
 
@@ -165,10 +188,110 @@ export default function OrdersPage() {
     const data = await res.json();
     if (res.ok) {
       toast.success("Sent to driver");
+      setSentOrders((prev) => new Set([...prev, orderId]));
     } else {
       toast.error(data.error || "Failed to send");
     }
     setActionLoading(null);
+  }
+
+  // --- Dispatch Orders to Driver ---
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryDate, setSummaryDate] = useState("");
+  const [summaryDriverId, setSummaryDriverId] = useState("");
+  const [summaryPreview, setSummaryPreview] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [summaryLastSent, setSummaryLastSent] = useState<string | null>(null);
+
+  function openSummaryDialog() {
+    // Default to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setSummaryDate(format(tomorrow, "yyyy-MM-dd"));
+    setSummaryDriverId("");
+    setSummaryPreview(null);
+    setSummaryLastSent(null);
+    setSummaryOpen(true);
+  }
+
+  async function previewSummary() {
+    if (!summaryDriverId || !summaryDate) return;
+    setPreviewLoading(true);
+    setSummaryPreview(null);
+
+    // Fetch orders for the selected driver on the selected date
+    const { data } = await supabase
+      .from("orders")
+      .select(
+        `id, order_date, destination, quantity_liters,
+         customer:customer_id(id, name, short_name),
+         items:order_items(product_id, quantity_liters, product:product_id(name))`
+      )
+      .eq("driver_id", summaryDriverId)
+      .eq("order_date", summaryDate)
+      .not("status", "in", '("cancelled","rejected")')
+      .order("created_at");
+
+    if (!data || data.length === 0) {
+      setSummaryPreview("No orders found for this driver on this date.");
+      setPreviewLoading(false);
+      return;
+    }
+
+    const [y, m, d] = summaryDate.split("-");
+    const fmtDate = `${d}/${m}/${y}`;
+
+    const lines = data.map((o: Record<string, unknown>) => {
+      const cust = o.customer as { name: string; short_name?: string | null } | null;
+      const custName = cust?.short_name || cust?.name || "—";
+      const items = (o.items ?? []) as { product_id: string; quantity_liters: number; product: { name: string } | null }[];
+      const dieselItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("DIESEL"));
+      const ltItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("(LT)"));
+      const qty = dieselItem?.quantity_liters ?? ltItem?.quantity_liters ?? o.quantity_liters;
+      const qtyStr = qty ? `${Number(qty).toLocaleString()}L` : "—";
+      const dest = (String(o.destination ?? "—")).split("\n")[0].trim();
+      const shortDest = dest.length > 40 ? dest.slice(0, 40) + "…" : dest;
+      return `${custName}, ${qtyStr}, ${shortDest}`;
+    });
+
+    setSummaryPreview(`📋 *${fmtDate}*\n\n${lines.join("\n")}`);
+
+    // Check if already sent before
+    const { data: logEntry } = await supabase
+      .from("notifications_log")
+      .select("sent_at")
+      .eq("type", "driver_daily_summary")
+      .eq("reference_id", `summary-${summaryDriverId}-${summaryDate}`)
+      .eq("status", "sent")
+      .order("sent_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setSummaryLastSent(logEntry?.sent_at ?? null);
+
+    setPreviewLoading(false);
+  }
+
+  async function sendSummary() {
+    if (!summaryDriverId || !summaryDate) return;
+    setSummaryLoading(true);
+    try {
+      const res = await fetch("/api/orders/send-driver-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driver_id: summaryDriverId, date: summaryDate }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Sent to ${driverMap[summaryDriverId]} (${data.orderCount} orders)`);
+        setSummaryLastSent(new Date().toISOString());
+      } else {
+        toast.error(data.error || "Failed to send");
+      }
+    } catch {
+      toast.error("Network error");
+    }
+    setSummaryLoading(false);
   }
 
   const activeFilterCount =
@@ -353,17 +476,21 @@ export default function OrdersPage() {
       hideClass: "hidden lg:table-cell",
       render: (o) => {
         if (!canSendToDriver || !o.driver_id) return null;
+        const wasSent = sentOrders.has(o.id);
         return (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            title="Send to Driver"
-            disabled={actionLoading === o.id}
-            onClick={(e) => { e.stopPropagation(); handleNotifyDriver(o.id); }}
-          >
-            <Send className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex items-center gap-0.5 justify-center">
+            {wasSent && <Check className="h-3 w-3 text-green-600" />}
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-7 w-7 ${wasSent ? "text-green-600" : ""}`}
+              title={wasSent ? "Sent — click to resend" : "Send to Driver"}
+              disabled={actionLoading === o.id}
+              onClick={(e) => { e.stopPropagation(); handleNotifyDriver(o.id); }}
+            >
+              <Send className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         );
       },
     },
@@ -378,13 +505,21 @@ export default function OrdersPage() {
             {total.toLocaleString()} total orders
           </p>
         </div>
-        <Button
-          onClick={() => router.push("/orders/new")}
-          className="gap-2 hidden md:flex"
-        >
-          <Plus className="h-4 w-4" />
-          New Order
-        </Button>
+        <div className="flex gap-2">
+          {canSendToDriver && (
+            <Button variant="outline" onClick={openSummaryDialog} className="gap-2 hidden md:flex">
+              <MessageSquare className="h-4 w-4" />
+              Dispatch Orders
+            </Button>
+          )}
+          <Button
+            onClick={() => router.push("/orders/new")}
+            className="gap-2 hidden md:flex"
+          >
+            <Plus className="h-4 w-4" />
+            New Order
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -468,6 +603,64 @@ export default function OrdersPage() {
 
       {/* Mobile FAB */}
       <FAB onClick={() => router.push("/orders/new")} label="New Order" />
+
+      {/* Dispatch Orders to Driver Dialog */}
+      <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Dispatch Orders to Driver</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Date</label>
+              <Input
+                type="date"
+                value={summaryDate}
+                onChange={(e) => { setSummaryDate(e.target.value); setSummaryPreview(null); }}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Driver</label>
+              <Select value={summaryDriverId} onValueChange={(v) => { if (v) { setSummaryDriverId(v); setSummaryPreview(null); } }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select driver...">{summaryDriverId ? driverMap[summaryDriverId] ?? "—" : "Select driver..."}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {driverList.filter((d) => d.role === "driver" && d.name !== "CYL" && d.name !== "Self Collection").map((d) => (
+                    <SelectItem key={d.id} value={d.id} label={d.name}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={!summaryDriverId || !summaryDate || previewLoading}
+              onClick={previewSummary}
+            >
+              {previewLoading ? "Loading..." : "Preview"}
+            </Button>
+            {summaryPreview && (
+              <div className="bg-muted rounded-lg p-3 text-sm whitespace-pre-wrap font-mono leading-relaxed">
+                {summaryPreview}
+              </div>
+            )}
+            {summaryLastSent && (
+              <p className="text-xs text-amber-600 text-center">
+                Already sent on {new Date(summaryLastSent).toLocaleString("en-MY", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </p>
+            )}
+            <Button
+              className="w-full"
+              disabled={!summaryPreview || summaryPreview.startsWith("No orders") || summaryLoading}
+              onClick={sendSummary}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              {summaryLoading ? "Sending..." : summaryLastSent ? "Send Again" : "Send via WhatsApp"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

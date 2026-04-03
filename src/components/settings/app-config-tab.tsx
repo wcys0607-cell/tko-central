@@ -31,6 +31,13 @@ interface ConfigEntry {
 
 const SENSITIVE_KEYWORDS = ["TOKEN", "API", "KEY", "SECRET", "PASSWORD"];
 
+// These keys are managed via the Notifications tab — hide from raw config editor
+const HIDDEN_KEYS = [
+  "FLEET_EXPIRY_RECIPIENTS",
+  "FLEET_UPDATE_RECIPIENTS",
+  "MAINTENANCE_ALERT_RECIPIENTS",
+];
+
 export function AppConfigTab() {
   const [configs, setConfigs] = useState<ConfigEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,7 +134,7 @@ export function AppConfigTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {configs.map((entry) => (
+              {configs.filter((e) => !HIDDEN_KEYS.includes(e.key)).map((entry) => (
                 <TableRow key={entry.key}>
                   <TableCell className="font-mono text-xs">
                     {entry.key}

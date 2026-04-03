@@ -22,9 +22,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Link from "next/link";
-import { ArrowLeft, Plus, Upload } from "lucide-react";
+import { ArrowLeft, Plus, Upload, X } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/components/providers/auth-provider";
+import type { Driver } from "@/lib/types";
 
-const DOC_TYPES = ["Road Tax", "Insurance", "Puspakom", "SPAD Permit", "Grant"];
+const DOC_TYPES = ["Road Tax", "Insurance", "Puspakom", "APAD", "Calibration"];
 const SERVICE_TYPES = [
   "Engine Oil",
   "Gear Oil",
@@ -50,11 +53,18 @@ export default function VehicleDetailPage({
 }) {
   const { id } = use(params);
   const supabase = useMemo(() => createClient(), []);
+  const { role } = useAuth();
+  const canManage = role === "admin" || role === "manager";
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [documents, setDocuments] = useState<FleetDocument[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceLog[]>([]);
   const [checklists, setChecklists] = useState<DriverChecklist[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Driver assignment
+  const [assignedDrivers, setAssignedDrivers] = useState<Pick<Driver, "id" | "name">[]>([]);
+  const [allDrivers, setAllDrivers] = useState<Pick<Driver, "id" | "name">[]>([]);
+  const [assignDriverId, setAssignDriverId] = useState("");
 
   // Document dialog
   const [docDialogOpen, setDocDialogOpen] = useState(false);
@@ -78,7 +88,7 @@ export default function VehicleDetailPage({
   const [maintError, setMaintError] = useState("");
 
   const load = useCallback(async () => {
-    const [vRes, docRes, maintRes, checkRes] = await Promise.all([
+    const [vRes, docRes, maintRes, checkRes, assignRes, driversRes] = await Promise.all([
       supabase.from("vehicles").select("*").eq("id", id).single(),
       supabase
         .from("fleet_documents")
@@ -96,12 +106,30 @@ export default function VehicleDetailPage({
         .eq("vehicle_id", id)
         .order("check_date", { ascending: false })
         .limit(50),
+      supabase
+        .from("driver_vehicle_assignments")
+        .select("driver:drivers!driver_vehicle_assignments_driver_id_fkey(id, name)")
+        .eq("vehicle_id", id),
+      supabase
+        .from("drivers")
+        .select("id, name")
+        .eq("is_active", true)
+        .eq("role", "driver")
+        .order("name"),
     ]);
 
     if (vRes.data) setVehicle(vRes.data);
     if (docRes.data) setDocuments(docRes.data);
     if (maintRes.data) setMaintenance(maintRes.data);
     if (checkRes.data) setChecklists(checkRes.data);
+    if (assignRes.data) {
+      setAssignedDrivers(
+        assignRes.data
+          .map((a: { driver: unknown }) => a.driver as Pick<Driver, "id" | "name">)
+          .filter(Boolean)
+      );
+    }
+    if (driversRes.data) setAllDrivers(driversRes.data);
     setLoading(false);
   }, [supabase, id]);
 
@@ -194,6 +222,27 @@ export default function VehicleDetailPage({
     if (!docError) {
       setDocDialogOpen(false);
       load();
+
+      // Send WhatsApp update notification (recipients controlled by FLEET_UPDATE_RECIPIENTS config)
+      if (editDoc) {
+        try {
+          const res = await fetch("/api/fleet/notify-update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              plateNumber: vehicle?.plate_number,
+              docType,
+              expiryDate,
+            }),
+          });
+          const result = await res.json();
+          if (result.sent > 0) {
+            toast.success(`Update notification sent to ${result.sent} recipient(s)`);
+          }
+        } catch {
+          // Non-critical — don't block the save
+        }
+      }
     }
   }
 
@@ -230,6 +279,39 @@ export default function VehicleDetailPage({
     setMaintSaving(false);
   }
 
+  async function assignDriver() {
+    if (!assignDriverId) return;
+    const { error } = await supabase
+      .from("driver_vehicle_assignments")
+      .insert({ driver_id: assignDriverId, vehicle_id: id });
+    if (error) {
+      if (error.code === "23505") toast.error("Driver already assigned");
+      else toast.error(error.message);
+    } else {
+      toast.success("Driver assigned");
+      setAssignDriverId("");
+      load();
+    }
+  }
+
+  async function unassignDriver(driverId: string) {
+    const { error } = await supabase
+      .from("driver_vehicle_assignments")
+      .delete()
+      .eq("driver_id", driverId)
+      .eq("vehicle_id", id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Driver unassigned");
+      load();
+    }
+  }
+
+  // Drivers not yet assigned to this vehicle
+  const unassignedDrivers = allDrivers.filter(
+    (d) => !assignedDrivers.some((a) => a.id === d.id)
+  );
+
   if (loading) return <div className="p-6 text-muted-foreground">Loading...</div>;
   if (!vehicle) return <div className="p-6 text-destructive">Vehicle not found.</div>;
 
@@ -241,7 +323,7 @@ export default function VehicleDetailPage({
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold text-primary">
             {vehicle.plate_number}
           </h1>
@@ -249,6 +331,45 @@ export default function VehicleDetailPage({
             {vehicle.type} | {vehicle.capacity_liters?.toLocaleString() ?? "—"}L | {vehicle.owner}
           </p>
         </div>
+      </div>
+
+      {/* Assigned Drivers */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-medium text-muted-foreground">Assigned Drivers:</span>
+        {assignedDrivers.length === 0 ? (
+          <span className="text-sm text-muted-foreground">None</span>
+        ) : (
+          assignedDrivers.map((d) => (
+            <Badge key={d.id} variant="secondary" className="gap-1 pr-1">
+              {d.name}
+              {canManage && (
+                <button
+                  onClick={() => unassignDriver(d.id)}
+                  className="ml-1 rounded-full hover:bg-destructive/20 p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </Badge>
+          ))
+        )}
+        {canManage && unassignedDrivers.length > 0 && (
+          <div className="flex items-center gap-1">
+            <Select value={assignDriverId} onValueChange={(v) => v && setAssignDriverId(v)}>
+              <SelectTrigger className="h-8 w-[160px] text-xs">
+                <SelectValue placeholder="Add driver..." />
+              </SelectTrigger>
+              <SelectContent>
+                {unassignedDrivers.map((d) => (
+                  <SelectItem key={d.id} value={d.id} label={d.name}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button size="sm" variant="outline" className="h-8" onClick={assignDriver} disabled={!assignDriverId}>
+              <Plus className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        )}
       </div>
 
       <Tabs defaultValue="documents">

@@ -97,6 +97,98 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Check if list endpoint includes form_items
+  const checkList = req.nextUrl.searchParams.get("check_list");
+  if (checkList === "1") {
+    const listRes = await bukkuFetch<{ transactions: Record<string, unknown>[] }>(config, {
+      path: `/sales/${type}`,
+      params: { per_page: 2 },
+    });
+    if (listRes.ok && listRes.data?.transactions?.[0]) {
+      const first = listRes.data.transactions[0];
+      const hasFormItems = "form_items" in first;
+      const formItemsValue = first.form_items;
+      // Also fetch detail to compare
+      const detailRes = await bukkuFetch<Record<string, unknown>>(config, {
+        path: `/sales/${type}/${first.id}`,
+      });
+      const detailTx = (detailRes.data as Record<string, unknown>)?.transaction as Record<string, unknown> | undefined;
+      return NextResponse.json({
+        list_has_form_items: hasFormItems,
+        list_form_items: formItemsValue,
+        list_keys: Object.keys(first),
+        detail_has_form_items: detailTx ? "form_items" in detailTx : false,
+        detail_form_items: detailTx?.form_items,
+      });
+    }
+    return NextResponse.json({ error: "No transactions found", listRes });
+  }
+
+  // Test void: try different approaches to void a transaction
+  const voidId = req.nextUrl.searchParams.get("void_id");
+  const voidType = req.nextUrl.searchParams.get("void_type") || "orders"; // orders, delivery_orders, invoices
+  if (voidId) {
+    const results: Record<string, unknown> = {};
+
+    // First fetch the transaction
+    const getRes = await bukkuFetch<{ transaction: Record<string, unknown> }>(config, {
+      path: `/sales/${voidType}/${voidId}`,
+    });
+    results["current_status"] = getRes.ok ? getRes.data?.transaction?.status : getRes.error;
+
+    // Approach 1: PUT with minimal { status: "void" }
+    const res1 = await bukkuFetch<Record<string, unknown>>(config, {
+      method: "PUT",
+      path: `/sales/${voidType}/${voidId}`,
+      body: { status: "void" },
+    });
+    results["put_minimal"] = { ok: res1.ok, data: res1.data, error: res1.error };
+
+    // Approach 2: POST to /void sub-endpoint
+    const res2 = await bukkuFetch<Record<string, unknown>>(config, {
+      method: "POST",
+      path: `/sales/${voidType}/${voidId}/void`,
+    });
+    results["post_void_endpoint"] = { ok: res2.ok, data: res2.data, error: res2.error };
+
+    // Approach 3: PATCH with { status: "void" }
+    const res3 = await bukkuFetch<Record<string, unknown>>(config, {
+      method: "PATCH",
+      path: `/sales/${voidType}/${voidId}`,
+      body: { status: "void" },
+    });
+    results["patch_void"] = { ok: res3.ok, data: res3.data, error: res3.error };
+
+    // Approach 4: PUT with full tx + status override
+    if (getRes.ok && getRes.data?.transaction) {
+      const res4 = await bukkuFetch<Record<string, unknown>>(config, {
+        method: "PUT",
+        path: `/sales/${voidType}/${voidId}`,
+        body: { ...getRes.data.transaction, status: "void" },
+      });
+      results["put_full_void"] = { ok: res4.ok, data: res4.data, error: res4.error };
+    }
+
+    // Re-check status
+    const checkRes = await bukkuFetch<{ transaction: Record<string, unknown> }>(config, {
+      path: `/sales/${voidType}/${voidId}`,
+    });
+    results["status_after"] = checkRes.ok ? checkRes.data?.transaction?.status : checkRes.error;
+
+    return NextResponse.json(results);
+  }
+
+  // Dry-run void: just check what status values Bukku accepts without actually voiding
+  const dryVoid = req.nextUrl.searchParams.get("dry_void");
+  if (dryVoid === "1") {
+    // Fetch a transaction to see its current status and available fields
+    const res = await bukkuFetch<Record<string, unknown>>(config, {
+      path: `/sales/${type}`,
+      params: { per_page: 1, status: "void" },
+    });
+    return NextResponse.json({ void_transactions: res });
+  }
+
   // List first few
   const res = await bukkuFetch<Record<string, unknown>>(config, {
     path: `/sales/${type}`,
