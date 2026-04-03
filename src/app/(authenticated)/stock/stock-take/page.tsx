@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { ArrowLeft, Camera, X } from "lucide-react";
+import { ArrowLeft, Camera, X, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 interface StockTakeEntry {
@@ -34,15 +33,30 @@ interface SessionRow {
   notes: string | null;
   photos: string[];
   takerName: string | null;
-  measurements: Record<string, number | null>; // location_id -> measured_liters
+  measurements: Record<string, number | null>;
 }
 
 interface DetailEntry {
   locationName: string;
   locationType: string;
+  locationCode: string;
   measured: number;
   system: number;
   variance: number;
+}
+
+const TYPE_ORDER: Record<string, number> = {
+  tank: 1,
+  drum: 2,
+  vehicle: 3,
+  meter: 4,
+};
+
+function sortByLocationOrder(a: { locationType: string; locationCode: string }, b: { locationType: string; locationCode: string }) {
+  const oa = TYPE_ORDER[a.locationType] ?? 5;
+  const ob = TYPE_ORDER[b.locationType] ?? 5;
+  if (oa !== ob) return oa - ob;
+  return a.locationCode.localeCompare(b.locationCode);
 }
 
 function varianceColor(pct: number): string {
@@ -66,23 +80,18 @@ export default function StockTakePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showNewForm, setShowNewForm] = useState(false);
   const [selectedSession, setSelectedSession] = useState<SessionRow | null>(null);
   const [detailEntries, setDetailEntries] = useState<DetailEntry[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // All locations for pivot table columns (ordered: tanks, drum, vehicles, meter)
+  // All locations for pivot table columns
   const pivotLocations = useMemo(
     () =>
       [...locations].sort((a, b) => {
-        const order: Record<string, number> = {
-          tank: 1,
-          drum: 2,
-          vehicle: 3,
-          meter: 4,
-        };
-        const oa = order[a.type ?? "tank"] ?? 5;
-        const ob = order[b.type ?? "tank"] ?? 5;
+        const oa = TYPE_ORDER[a.type ?? "tank"] ?? 5;
+        const ob = TYPE_ORDER[b.type ?? "tank"] ?? 5;
         if (oa !== ob) return oa - ob;
         return (a.code ?? "").localeCompare(b.code ?? "");
       }),
@@ -189,20 +198,33 @@ export default function StockTakePage() {
       .eq("session_id", session.id);
 
     if (data) {
-      setDetailEntries(
-        data.map((d: Record<string, unknown>) => {
+      const entries = data
+        .map((d: Record<string, unknown>) => {
           const loc = d.location as { name?: string; code?: string; type?: string } | null;
           return {
             locationName: loc?.name || loc?.code || "—",
             locationType: loc?.type ?? "tank",
+            locationCode: loc?.code ?? "",
             measured: (d.measured_liters as number) ?? 0,
             system: (d.system_liters as number) ?? 0,
             variance: (d.variance as number) ?? 0,
           };
         })
-      );
+        .sort(sortByLocationOrder);
+      setDetailEntries(entries);
     }
     setDetailLoading(false);
+  }
+
+  function resetNewForm() {
+    setEntries((prev) =>
+      prev.map((e) => ({ ...e, measured: "" }))
+    );
+    setSessionNotes("");
+    setSessionPhotos([]);
+    setPhotoPreviewUrls([]);
+    setError("");
+    setTakeDate(new Date().toISOString().split("T")[0]);
   }
 
   async function handleSave() {
@@ -333,9 +355,8 @@ export default function StockTakePage() {
         );
       }
 
-      setSessionNotes("");
-      setSessionPhotos([]);
-      setPhotoPreviewUrls([]);
+      setShowNewForm(false);
+      resetNewForm();
       await load();
     }
 
@@ -348,397 +369,410 @@ export default function StockTakePage() {
 
   return (
     <div className="p-4 md:p-6 space-y-4 animate-fade-in">
-      <div className="flex items-center gap-2">
-        <Link href="/stock">
-          <Button variant="ghost" size="icon">
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-        </Link>
-        <h1 className="text-2xl font-bold text-primary">Stock Take</h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Link href="/stock">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+          </Link>
+          <h1 className="text-2xl font-bold text-primary">Stock Take</h1>
+        </div>
+        <Button
+          size="sm"
+          className="bg-primary hover:bg-primary/90"
+          onClick={() => {
+            resetNewForm();
+            setShowNewForm(true);
+          }}
+        >
+          <Plus className="w-4 h-4 mr-1" /> New Stock Take
+        </Button>
       </div>
 
-      <Tabs defaultValue="new">
-        <TabsList>
-          <TabsTrigger value="new">New Stock Take</TabsTrigger>
-          <TabsTrigger value="history">
-            History ({sessions.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="new" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Physical Measurement</CardTitle>
-                <Input
-                  type="date"
-                  value={takeDate}
-                  onChange={(e) => setTakeDate(e.target.value)}
-                  className="w-[180px]"
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
-              {/* Tanks (including Drum Storage) */}
-              <div className="border rounded-lg overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted border-b">
-                    <tr>
-                      <th className="text-left p-3">Location</th>
-                      <th className="text-right p-3">System (L)</th>
-                      <th className="text-right p-3">Measured (L)</th>
-                      <th className="text-right p-3">Variance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {entries.map((entry, idx) => {
-                      if (
-                        entry.locationType !== "tank" &&
-                        entry.locationType !== "drum"
-                      )
-                        return null;
-                      const measured = parseFloat(entry.measured);
-                      const hasValue = !isNaN(measured);
-                      const variance = hasValue
-                        ? measured - entry.systemBalance
-                        : 0;
-                      const variancePct =
-                        hasValue && entry.systemBalance > 0
-                          ? (variance / entry.systemBalance) * 100
-                          : 0;
-
-                      return (
-                        <tr key={entry.locationId} className="border-b">
-                          <td className="p-3 font-medium">
-                            {entry.locationName}
-                          </td>
-                          <td className="p-3 text-right font-mono">
-                            {entry.systemBalance.toLocaleString()}
-                          </td>
-                          <td className="p-3">
-                            <Input
-                              type="number"
-                              step="1"
-                              value={entry.measured}
-                              onChange={(e) =>
-                                updateMeasured(idx, e.target.value)
-                              }
-                              placeholder="0"
-                              className="w-[120px] ml-auto text-right"
-                            />
-                          </td>
-                          <td className="p-3 text-right">
-                            {hasValue ? (
-                              <span
-                                className={`font-mono font-semibold ${varianceColor(variancePct)}`}
-                              >
-                                {variance > 0 ? "+" : ""}
-                                {Math.round(variance).toLocaleString()}L (
-                                {variancePct.toFixed(1)}%)
-                              </span>
-                            ) : (
-                              "—"
-                            )}
-                          </td>
-                        </tr>
-                      );
+      {/* History Table (default view) */}
+      <div className="border rounded-lg overflow-x-auto">
+        <table className="w-full text-sm whitespace-nowrap">
+          <thead className="bg-muted border-b">
+            <tr>
+              <th className="text-left p-2 sticky left-0 bg-muted z-10">
+                Date
+              </th>
+              <th className="text-left p-2">Time</th>
+              {pivotLocations.map((loc) => (
+                <th key={loc.id} className="text-right p-2">
+                  {loc.name || loc.code}
+                </th>
+              ))}
+              <th className="text-left p-2">Note</th>
+              <th className="text-left p-2">Photo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sessions.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={4 + pivotLocations.length}
+                  className="text-center p-6 text-muted-foreground"
+                >
+                  No stock takes yet
+                </td>
+              </tr>
+            ) : (
+              sessions.map((session) => (
+                <tr
+                  key={session.id}
+                  className="border-b hover:bg-muted/50 cursor-pointer"
+                  onClick={() => openSessionDetail(session)}
+                >
+                  <td className="p-2 sticky left-0 bg-background font-medium">
+                    {new Date(session.date).toLocaleDateString("en-MY", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
                     })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Vehicles */}
-              {entries.some((e) => e.locationType === "vehicle") && (
-                <div className="border rounded-lg overflow-x-auto mt-4">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted border-b">
-                      <tr>
-                        <th className="text-left p-3">Vehicle</th>
-                        <th className="text-right p-3">System (L)</th>
-                        <th className="text-right p-3">Measured (L)</th>
-                        <th className="text-right p-3">Variance</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {entries.map((entry, idx) => {
-                        if (entry.locationType !== "vehicle") return null;
-                        const measured = parseFloat(entry.measured);
-                        const hasValue = !isNaN(measured);
-                        const variance = hasValue
-                          ? measured - entry.systemBalance
-                          : 0;
-                        const variancePct =
-                          hasValue && entry.systemBalance > 0
-                            ? (variance / entry.systemBalance) * 100
-                            : 0;
-
-                        return (
-                          <tr key={entry.locationId} className="border-b">
-                            <td className="p-3 font-medium">
-                              {entry.locationName}
-                            </td>
-                            <td className="p-3 text-right font-mono">
-                              {entry.systemBalance.toLocaleString()}
-                            </td>
-                            <td className="p-3">
-                              <Input
-                                type="number"
-                                step="1"
-                                value={entry.measured}
-                                onChange={(e) =>
-                                  updateMeasured(idx, e.target.value)
-                                }
-                                placeholder="0"
-                                className="w-[120px] ml-auto text-right"
-                              />
-                            </td>
-                            <td className="p-3 text-right">
-                              {hasValue ? (
-                                <span
-                                  className={`font-mono font-semibold ${varianceColor(variancePct)}`}
-                                >
-                                  {variance > 0 ? "+" : ""}
-                                  {Math.round(variance).toLocaleString()}L (
-                                  {variancePct.toFixed(1)}%)
-                                </span>
-                              ) : (
-                                "—"
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Meter Reading */}
-              {entries.some((e) => e.locationType === "meter") && (
-                <div className="border rounded-lg overflow-x-auto mt-4">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted border-b">
-                      <tr>
-                        <th className="text-left p-3">Meter</th>
-                        <th className="text-right p-3">Reading</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {entries.map((entry, idx) => {
-                        if (entry.locationType !== "meter") return null;
-                        return (
-                          <tr key={entry.locationId} className="border-b">
-                            <td className="p-3 font-medium">
-                              {entry.locationName}
-                            </td>
-                            <td className="p-3">
-                              <Input
-                                type="number"
-                                step="1"
-                                value={entry.measured}
-                                onChange={(e) =>
-                                  updateMeasured(idx, e.target.value)
-                                }
-                                placeholder="0"
-                                className="w-[120px] ml-auto text-right"
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Session Note & Photos */}
-              <div className="mt-4 space-y-3">
-                <div>
-                  <label className="text-sm font-medium mb-1 block">
-                    Remark
-                  </label>
-                  <Textarea
-                    value={sessionNotes}
-                    onChange={(e) => setSessionNotes(e.target.value)}
-                    placeholder="Add remark for this stock take..."
-                    rows={4}
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-1 block">
-                    Photos
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {photoPreviewUrls.map((url, idx) => (
-                      <div
-                        key={idx}
-                        className="relative w-20 h-20 rounded-md overflow-hidden border"
+                  </td>
+                  <td className="p-2 text-muted-foreground">
+                    {new Date(session.created_at).toLocaleTimeString(
+                      "en-MY",
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: true,
+                      }
+                    )}
+                  </td>
+                  {pivotLocations.map((loc) => {
+                    const val = session.measurements[loc.id];
+                    const isMeter = loc.type === "meter";
+                    return (
+                      <td
+                        key={loc.id}
+                        className="p-2 text-right font-mono text-sm"
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={url}
-                          alt={`Photo ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removePhoto(idx)}
-                          className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
+                        {val != null ? (
+                          <span>
+                            {Math.round(val).toLocaleString()}
+                            {!isMeter && "L"}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="p-2 max-w-[300px] whitespace-pre-wrap text-xs">
+                    {session.notes ? (
+                      <div className="line-clamp-3" title={session.notes}>
+                        {session.notes}
                       </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-20 h-20 rounded-md border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                    >
-                      <Camera className="w-5 h-5" />
-                      <span className="text-[10px] mt-0.5">Add</span>
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handlePhotoSelect}
-                      className="hidden"
-                    />
-                  </div>
-                </div>
-              </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="p-2">
+                    {session.photos.length > 0 ? (
+                      <div className="flex gap-1">
+                        {session.photos.map((url, pi) => (
+                          <a
+                            key={pi}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="block w-8 h-8 rounded overflow-hidden border hover:ring-2 ring-primary flex-shrink-0"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={url}
+                              alt={`Photo ${pi + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
-              {error && (
-                <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md mt-4">
-                  {error}
-                </p>
-              )}
+      {/* New Stock Take Dialog */}
+      <Dialog
+        open={showNewForm}
+        onOpenChange={(open) => {
+          if (!open && !saving) {
+            setShowNewForm(false);
+            resetNewForm();
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>New Stock Take</DialogTitle>
+          </DialogHeader>
 
-              <Button
-                onClick={handleSave}
-                className="mt-4 bg-primary hover:bg-primary/90"
-                disabled={saving}
-              >
-                {saving ? "Saving..." : "Save Stock Take"}
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium">Date</span>
+            <Input
+              type="date"
+              value={takeDate}
+              onChange={(e) => setTakeDate(e.target.value)}
+              className="w-[180px]"
+            />
+          </div>
 
-        <TabsContent value="history" className="mt-4">
+          {/* Tanks (including Drum Storage) */}
           <div className="border rounded-lg overflow-x-auto">
-            <table className="w-full text-sm whitespace-nowrap">
+            <table className="w-full text-sm">
               <thead className="bg-muted border-b">
                 <tr>
-                  <th className="text-left p-2 sticky left-0 bg-muted z-10">
-                    Date
-                  </th>
-                  <th className="text-left p-2">Time</th>
-                  {pivotLocations.map((loc) => (
-                    <th key={loc.id} className="text-right p-2">
-                      {loc.name || loc.code}
-                    </th>
-                  ))}
-                  <th className="text-left p-2">Note</th>
-                  <th className="text-left p-2">Photo</th>
+                  <th className="text-left p-3">Location</th>
+                  <th className="text-right p-3">System (L)</th>
+                  <th className="text-right p-3">Measured (L)</th>
+                  <th className="text-right p-3">Variance</th>
                 </tr>
               </thead>
               <tbody>
-                {sessions.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={4 + pivotLocations.length}
-                      className="text-center p-6 text-muted-foreground"
-                    >
-                      No stock takes yet
-                    </td>
-                  </tr>
-                ) : (
-                  sessions.map((session) => (
-                    <tr
-                      key={session.id}
-                      className="border-b hover:bg-muted/50 cursor-pointer"
-                      onClick={() => openSessionDetail(session)}
-                    >
-                      <td className="p-2 sticky left-0 bg-background font-medium">
-                        {new Date(session.date).toLocaleDateString("en-MY", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                        })}
+                {entries.map((entry, idx) => {
+                  if (
+                    entry.locationType !== "tank" &&
+                    entry.locationType !== "drum"
+                  )
+                    return null;
+                  const measured = parseFloat(entry.measured);
+                  const hasValue = !isNaN(measured);
+                  const variance = hasValue
+                    ? measured - entry.systemBalance
+                    : 0;
+                  const variancePct =
+                    hasValue && entry.systemBalance > 0
+                      ? (variance / entry.systemBalance) * 100
+                      : 0;
+
+                  return (
+                    <tr key={entry.locationId} className="border-b">
+                      <td className="p-3 font-medium">
+                        {entry.locationName}
                       </td>
-                      <td className="p-2 text-muted-foreground">
-                        {new Date(session.created_at).toLocaleTimeString(
-                          "en-MY",
-                          {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: true,
+                      <td className="p-3 text-right font-mono">
+                        {entry.systemBalance.toLocaleString()}
+                      </td>
+                      <td className="p-3">
+                        <Input
+                          type="number"
+                          step="1"
+                          value={entry.measured}
+                          onChange={(e) =>
+                            updateMeasured(idx, e.target.value)
                           }
-                        )}
+                          placeholder="0"
+                          className="w-[120px] ml-auto text-right"
+                        />
                       </td>
-                      {pivotLocations.map((loc) => {
-                        const val = session.measurements[loc.id];
-                        const isMeter = loc.type === "meter";
-                        return (
-                          <td
-                            key={loc.id}
-                            className="p-2 text-right font-mono text-sm"
+                      <td className="p-3 text-right">
+                        {hasValue ? (
+                          <span
+                            className={`font-mono font-semibold ${varianceColor(variancePct)}`}
                           >
-                            {val != null ? (
-                              <span>
-                                {Math.round(val).toLocaleString()}
-                                {!isMeter && "L"}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td className="p-2 max-w-[300px] whitespace-pre-wrap text-xs">
-                        {session.notes ? (
-                          <div className="line-clamp-3" title={session.notes}>
-                            {session.notes}
-                          </div>
+                            {variance > 0 ? "+" : ""}
+                            {Math.round(variance).toLocaleString()}L (
+                            {variancePct.toFixed(1)}%)
+                          </span>
                         ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="p-2">
-                        {session.photos.length > 0 ? (
-                          <div className="flex gap-1">
-                            {session.photos.map((url, pi) => (
-                              <a
-                                key={pi}
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="block w-8 h-8 rounded overflow-hidden border hover:ring-2 ring-primary flex-shrink-0"
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={url}
-                                  alt={`Photo ${pi + 1}`}
-                                  className="w-full h-full object-cover"
-                                />
-                              </a>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
+                          "—"
                         )}
                       </td>
                     </tr>
-                  ))
-                )}
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </TabsContent>
-      </Tabs>
+
+          {/* Vehicles */}
+          {entries.some((e) => e.locationType === "vehicle") && (
+            <div className="border rounded-lg overflow-x-auto mt-4">
+              <table className="w-full text-sm">
+                <thead className="bg-muted border-b">
+                  <tr>
+                    <th className="text-left p-3">Vehicle</th>
+                    <th className="text-right p-3">System (L)</th>
+                    <th className="text-right p-3">Measured (L)</th>
+                    <th className="text-right p-3">Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map((entry, idx) => {
+                    if (entry.locationType !== "vehicle") return null;
+                    const measured = parseFloat(entry.measured);
+                    const hasValue = !isNaN(measured);
+                    const variance = hasValue
+                      ? measured - entry.systemBalance
+                      : 0;
+                    const variancePct =
+                      hasValue && entry.systemBalance > 0
+                        ? (variance / entry.systemBalance) * 100
+                        : 0;
+
+                    return (
+                      <tr key={entry.locationId} className="border-b">
+                        <td className="p-3 font-medium">
+                          {entry.locationName}
+                        </td>
+                        <td className="p-3 text-right font-mono">
+                          {entry.systemBalance.toLocaleString()}
+                        </td>
+                        <td className="p-3">
+                          <Input
+                            type="number"
+                            step="1"
+                            value={entry.measured}
+                            onChange={(e) =>
+                              updateMeasured(idx, e.target.value)
+                            }
+                            placeholder="0"
+                            className="w-[120px] ml-auto text-right"
+                          />
+                        </td>
+                        <td className="p-3 text-right">
+                          {hasValue ? (
+                            <span
+                              className={`font-mono font-semibold ${varianceColor(variancePct)}`}
+                            >
+                              {variance > 0 ? "+" : ""}
+                              {Math.round(variance).toLocaleString()}L (
+                              {variancePct.toFixed(1)}%)
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Meter Reading */}
+          {entries.some((e) => e.locationType === "meter") && (
+            <div className="border rounded-lg overflow-x-auto mt-4">
+              <table className="w-full text-sm">
+                <thead className="bg-muted border-b">
+                  <tr>
+                    <th className="text-left p-3">Meter</th>
+                    <th className="text-right p-3">Reading</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map((entry, idx) => {
+                    if (entry.locationType !== "meter") return null;
+                    return (
+                      <tr key={entry.locationId} className="border-b">
+                        <td className="p-3 font-medium">
+                          {entry.locationName}
+                        </td>
+                        <td className="p-3">
+                          <Input
+                            type="number"
+                            step="1"
+                            value={entry.measured}
+                            onChange={(e) =>
+                              updateMeasured(idx, e.target.value)
+                            }
+                            placeholder="0"
+                            className="w-[120px] ml-auto text-right"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Remark & Photos */}
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">
+                Remark
+              </label>
+              <Textarea
+                value={sessionNotes}
+                onChange={(e) => setSessionNotes(e.target.value)}
+                placeholder="Add remark for this stock take..."
+                rows={4}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1 block">
+                Photos
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {photoPreviewUrls.map((url, idx) => (
+                  <div
+                    key={idx}
+                    className="relative w-20 h-20 rounded-md overflow-hidden border"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt={`Photo ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(idx)}
+                      className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-20 h-20 rounded-md border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                >
+                  <Camera className="w-5 h-5" />
+                  <span className="text-[10px] mt-0.5">Add</span>
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handlePhotoSelect}
+                  className="hidden"
+                />
+              </div>
+            </div>
+          </div>
+
+          {error && (
+            <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md mt-4">
+              {error}
+            </p>
+          )}
+
+          <Button
+            onClick={handleSave}
+            className="mt-4 w-full bg-primary hover:bg-primary/90"
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "Save Stock Take"}
+          </Button>
+        </DialogContent>
+      </Dialog>
 
       {/* Session Detail Dialog */}
       <Dialog
