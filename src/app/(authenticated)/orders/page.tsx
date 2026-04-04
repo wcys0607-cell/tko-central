@@ -1,16 +1,23 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Order } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { DataList, type DataColumn } from "@/components/ui/data-list";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { PaginationBar } from "@/components/ui/pagination-bar";
 import { FAB } from "@/components/ui/fab";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -27,7 +34,7 @@ import {
 import { Plus, Search, Send, MessageSquare, Check } from "lucide-react";
 import { ColumnPicker } from "@/components/ui/column-picker";
 import { useColumnPreferences } from "@/hooks/use-column-preferences";
-import { format } from "date-fns";
+import { format, addDays, isToday, isTomorrow, isYesterday } from "date-fns";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "sonner";
 
@@ -57,17 +64,43 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [activeQuickDate, setActiveQuickDate] = useState<string | null>(null);
+
+  // Quick date shortcuts
+  const quickDates = useMemo(() => {
+    const today = new Date();
+    return [
+      { key: "yesterday", label: "Yesterday", date: format(addDays(today, -1), "yyyy-MM-dd") },
+      { key: "today", label: "Today", date: format(today, "yyyy-MM-dd") },
+      { key: "tomorrow", label: "Tomorrow", date: format(addDays(today, 1), "yyyy-MM-dd") },
+      { key: "day_after", label: format(addDays(today, 2), "EEE, d MMM"), date: format(addDays(today, 2), "yyyy-MM-dd") },
+    ];
+  }, []);
+
+  function setQuickDate(key: string, date: string) {
+    if (activeQuickDate === key) {
+      // Deselect
+      setActiveQuickDate(null);
+      setDateFrom("");
+      setDateTo("");
+    } else {
+      setActiveQuickDate(key);
+      setDateFrom(date);
+      setDateTo(date);
+    }
+    setPage(0);
+  }
 
   const canInlineEdit = role === "admin" || role === "manager";
   const canSendToDriver = role === "admin" || role === "manager" || role === "office";
 
   // Column picker preferences
   const ALL_COLUMN_KEYS = useMemo(
-    () => ["date", "customer", "load_from", "destination", "qty", "total", "driver", "truck", "status", "actions"],
+    () => ["customer", "load_from", "destination", "qty", "total", "driver", "truck", "status", "actions"],
     []
   );
   const DEFAULT_VISIBLE = useMemo(
-    () => ["date", "customer", "load_from", "destination", "qty", "total", "driver", "truck", "status", "actions"],
+    () => ["customer", "load_from", "destination", "qty", "total", "driver", "truck", "status", "actions"],
     []
   );
   const {
@@ -331,8 +364,9 @@ export default function OrdersPage() {
 
   const activeFilterCount =
     (statusFilter !== "all" ? 1 : 0) +
-    (dateFrom ? 1 : 0) +
-    (dateTo ? 1 : 0) +
+    (dateFrom && !activeQuickDate ? 1 : 0) +
+    (dateTo && !activeQuickDate ? 1 : 0) +
+    (activeQuickDate ? 1 : 0) +
     (search ? 1 : 0);
 
   const clearFilters = () => {
@@ -340,26 +374,24 @@ export default function OrdersPage() {
     setDateFrom("");
     setDateTo("");
     setSearch("");
+    setActiveQuickDate(null);
     setPage(0);
   };
 
-  const columns: DataColumn<Order>[] = [
-    {
-      key: "date",
-      label: "Date",
-      className: "whitespace-nowrap",
-      mobileVisible: true,
-      mobileSecondary: true,
-      render: (o) =>
-        o.order_date
-          ? format(new Date(o.order_date + "T00:00:00"), "d MMM yy")
-          : "—",
-    },
+  // Column definitions (date is shown in group headers, not as a column)
+  interface ColDef {
+    key: string;
+    label: string;
+    className?: string;
+    hideClass?: string;
+    render: (o: Order) => React.ReactNode;
+  }
+
+  const columns: ColDef[] = [
     {
       key: "customer",
       label: "Customer",
       className: "whitespace-nowrap max-w-[140px]",
-      mobilePrimary: true,
       render: (o) => {
         const cust = o.customer as { name: string; short_name?: string | null } | null;
         return (
@@ -398,7 +430,6 @@ export default function OrdersPage() {
       key: "destination",
       label: "Destination",
       className: "max-w-[180px]",
-      mobileVisible: true,
       render: (o) => (
         <span className="block truncate text-sm" title={o.destination ?? ""}>{(!o.destination || o.destination === "_custom") ? "—" : o.destination}</span>
       ),
@@ -407,7 +438,6 @@ export default function OrdersPage() {
       key: "qty",
       label: "Qty (L)",
       className: "text-right whitespace-nowrap",
-      mobileVisible: true,
       render: (o) => {
         const items = (o.items ?? []) as unknown as { product_id: string | null; quantity_liters: number | null }[];
         const getName = (pid: string | null) => pid ? (productMap[pid] ?? "").toUpperCase() : "";
@@ -426,7 +456,6 @@ export default function OrdersPage() {
       label: "Total",
       className: "text-right whitespace-nowrap",
       hideClass: "hidden lg:table-cell",
-      mobileVisible: true,
       render: (o) =>
         o.total_sale
           ? `RM ${o.total_sale.toLocaleString("en-MY", { minimumFractionDigits: 2 })}`
@@ -486,7 +515,6 @@ export default function OrdersPage() {
       key: "status",
       label: "Status",
       className: "text-center whitespace-nowrap",
-      mobileVisible: true,
       render: (o) => {
         if (canInlineEdit && o.status === "pending" && o.stock_sync_status !== "synced") {
           return (
@@ -522,7 +550,6 @@ export default function OrdersPage() {
       label: "",
       className: "text-center whitespace-nowrap w-[40px]",
       hideClass: "hidden lg:table-cell",
-      noResize: true,
       render: (o) => {
         if (!canSendToDriver || !o.driver_id) return null;
         const wasSent = sentOrders.has(o.id);
@@ -548,6 +575,7 @@ export default function OrdersPage() {
   // Filter columns based on visibility preferences
   const filteredColumns = useMemo(
     () => columns.filter((col) => visibleColumns.includes(col.key)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [columns, visibleColumns]
   );
 
@@ -557,19 +585,43 @@ export default function OrdersPage() {
       columns
         .filter((c) => c.label) // skip empty-label columns like actions
         .map((c) => ({ key: c.key, label: c.label })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [columns]
   );
 
+  // Group orders by date
+  const groupedOrders = useMemo(() => {
+    const groups: { date: string; label: string; orders: Order[] }[] = [];
+    let currentDate = "";
+    for (const o of orders) {
+      const d = o.order_date ?? "";
+      if (d !== currentDate) {
+        currentDate = d;
+        let label = d ? format(new Date(d + "T00:00:00"), "EEE, d MMM yyyy") : "No Date";
+        if (d) {
+          const parsed = new Date(d + "T00:00:00");
+          if (isToday(parsed)) label = "Today — " + label;
+          else if (isTomorrow(parsed)) label = "Tomorrow — " + label;
+          else if (isYesterday(parsed)) label = "Yesterday — " + label;
+        }
+        groups.push({ date: d, label, orders: [] });
+      }
+      groups[groups.length - 1].orders.push(o);
+    }
+    return groups;
+  }, [orders]);
+
   return (
-    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
+    <div className="p-3 md:p-4 space-y-3 animate-fade-in">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Orders</h1>
-          <p className="text-sm text-muted-foreground">
-            {total.toLocaleString()} total orders
+          <h1 className="text-xl font-bold">Orders</h1>
+          <p className="text-xs text-muted-foreground">
+            {total.toLocaleString()} total
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1.5">
           <ColumnPicker
             columns={columnPickerOptions}
             visibleColumns={visibleColumns}
@@ -577,19 +629,35 @@ export default function OrdersPage() {
             onReset={resetPreferences}
           />
           {canSendToDriver && (
-            <Button variant="outline" onClick={openSummaryDialog} className="gap-2 hidden md:flex">
-              <MessageSquare className="h-4 w-4" />
-              Dispatch Orders
+            <Button variant="outline" size="sm" onClick={openSummaryDialog} className="gap-1.5 hidden md:flex">
+              <MessageSquare className="h-3.5 w-3.5" />
+              Dispatch
             </Button>
           )}
           <Button
+            size="sm"
             onClick={() => router.push("/orders/new")}
-            className="gap-2 hidden md:flex"
+            className="gap-1.5 hidden md:flex"
           >
-            <Plus className="h-4 w-4" />
-            New Order
+            <Plus className="h-3.5 w-3.5" />
+            New
           </Button>
         </div>
+      </div>
+
+      {/* Quick date shortcuts */}
+      <div className="flex gap-1.5 flex-wrap">
+        {quickDates.map((qd) => (
+          <Button
+            key={qd.key}
+            variant={activeQuickDate === qd.key ? "default" : "outline"}
+            size="sm"
+            className="h-7 text-xs px-2.5"
+            onClick={() => setQuickDate(qd.key, qd.date)}
+          >
+            {qd.label}
+          </Button>
+        ))}
       </div>
 
       {/* Filters */}
@@ -597,13 +665,13 @@ export default function OrdersPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Invoice / DN number..."
+            placeholder="Invoice / DN..."
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
               setPage(0);
             }}
-            className="pl-9 w-full md:w-52"
+            className="pl-9 h-8 text-sm w-full md:w-44"
           />
         </div>
         <Select
@@ -615,7 +683,7 @@ export default function OrdersPage() {
             }
           }}
         >
-          <SelectTrigger className="w-full md:w-36">
+          <SelectTrigger className="w-full md:w-32 h-8 text-sm">
             <SelectValue>{{ all: "All Status", pending: "Pending", approved: "Acknowledged", rejected: "Rejected", delivered: "Delivered", cancelled: "Cancelled" }[statusFilter] ?? statusFilter}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -627,42 +695,93 @@ export default function OrdersPage() {
             <SelectItem value="cancelled" label="Cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>
-        <div className="flex items-center gap-2 w-full md:w-auto">
+        <div className="flex items-center gap-1.5 w-full md:w-auto">
           <Input
             type="date"
             value={dateFrom}
             onChange={(e) => {
+              setActiveQuickDate(null);
               setDateFrom(e.target.value);
               setPage(0);
             }}
-            className="flex-1 md:w-36"
+            className="flex-1 md:w-32 h-8 text-sm"
           />
-          <span className="text-muted-foreground text-sm">to</span>
+          <span className="text-muted-foreground text-xs">to</span>
           <Input
             type="date"
             value={dateTo}
             onChange={(e) => {
+              setActiveQuickDate(null);
               setDateTo(e.target.value);
               setPage(0);
             }}
-            className="flex-1 md:w-36"
+            className="flex-1 md:w-32 h-8 text-sm"
           />
         </div>
       </FilterBar>
 
-      {/* Data */}
-      <DataList
-        data={orders}
-        columns={filteredColumns}
-        keyExtractor={(o) => o.id}
-        onRowClick={(o) => router.push(`/orders/${o.id}`)}
-        loading={loading}
-        emptyMessage="No orders found."
-        tableClassName="min-w-[900px]"
-        alwaysTable
-        columnWidths={prefs.widths}
-        onColumnResize={setColumnWidth}
-      />
+      {/* Compact grouped table */}
+      {loading ? (
+        <div className="space-y-1.5">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-8 bg-muted rounded animate-pulse" style={{ animationDelay: `${i * 40}ms` }} />
+          ))}
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground text-sm">No orders found.</div>
+      ) : (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table className="w-full min-w-[800px]">
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  {filteredColumns.map((col) => (
+                    <TableHead
+                      key={col.key}
+                      className={`h-7 px-1.5 text-xs ${col.className ?? ""} ${col.hideClass ?? ""}`}
+                    >
+                      {col.label}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {groupedOrders.map((group) => (
+                  <React.Fragment key={group.date}>
+                    {/* Day group header */}
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableCell
+                        colSpan={filteredColumns.length}
+                        className="py-1 px-1.5 text-xs font-semibold text-muted-foreground"
+                      >
+                        {group.label}
+                        <span className="ml-2 font-normal">({group.orders.length})</span>
+                      </TableCell>
+                    </TableRow>
+                    {/* Order rows */}
+                    {group.orders.map((o) => (
+                      <TableRow
+                        key={o.id}
+                        className="hover:bg-muted/50 cursor-pointer"
+                        onClick={() => router.push(`/orders/${o.id}`)}
+                      >
+                        {filteredColumns.map((col) => (
+                          <TableCell
+                            key={col.key}
+                            className={`py-1 px-1.5 text-xs ${col.className ?? ""} ${col.hideClass ?? ""}`}
+                          >
+                            {col.render(o)}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </React.Fragment>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
 
       {/* Pagination */}
       <PaginationBar
