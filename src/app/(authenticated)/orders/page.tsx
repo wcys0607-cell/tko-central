@@ -94,9 +94,16 @@ export default function OrdersPage() {
   const canInlineEdit = role === "admin" || role === "manager";
   const canSendToDriver = role === "admin" || role === "manager" || role === "office";
 
-  // Column picker preferences
+  // Column picker preferences — all available columns, default shows the core set
   const ALL_COLUMN_KEYS = useMemo(
-    () => ["customer", "destination", "qty", "remark", "delivery_remark", "truck", "driver", "load_from", "status", "actions"],
+    () => [
+      "customer", "destination", "qty", "remark", "delivery_remark",
+      "truck", "driver", "load_from", "status",
+      "total", "transport", "unit_price", "dn_number", "invoice_number",
+      "order_type", "agent_name", "receipt_no", "smart_do_number",
+      "references_number", "document_number", "wages", "special_allowance",
+      "acceptance", "actions",
+    ],
     []
   );
   const DEFAULT_VISIBLE = useMemo(
@@ -158,7 +165,7 @@ export default function OrdersPage() {
     let query = supabase
       .from("orders")
       .select(
-        `id, order_date, customer_id, destination, product_id, quantity_liters, unit_price, total_sale, dn_number, invoice_number, status, bukku_sync_status, stock_sync_status, driver_id, vehicle_id, load_from, remark, delivery_remark, items:order_items(product_id, quantity_liters), customer:customer_id(id, name, short_name)`,
+        `id, order_date, customer_id, destination, product_id, quantity_liters, unit_price, total_sale, dn_number, invoice_number, status, bukku_sync_status, stock_sync_status, driver_id, vehicle_id, load_from, remark, delivery_remark, transport, order_type, agent_name, receipt_no, smart_do_number, references_number, document_number, wages, special_allowance, acceptance, created_at, items:order_items(product_id, quantity_liters), customer:customer_id(id, name, short_name)`,
         { count: "exact" }
       )
       .order("order_date", { ascending: false })
@@ -378,7 +385,7 @@ export default function OrdersPage() {
     setPage(0);
   };
 
-  // Column definitions — order: Customer, Destination, Quantity, Remark, Remark for Driver, Truck No, Driver, Load From, Status, Actions
+  // Column definitions — all available data columns
   interface ColDef {
     key: string;
     label: string;
@@ -387,27 +394,24 @@ export default function OrdersPage() {
     render: (o: Order) => React.ReactNode;
   }
 
+  const txt = (v: string | number | null | undefined) => v ?? "—";
+  const money = (v: number | null) => v != null ? `RM ${v.toLocaleString("en-MY", { minimumFractionDigits: 2 })}` : "—";
+
   const columns: ColDef[] = [
     {
       key: "customer",
       label: "Customer",
-      className: "whitespace-nowrap max-w-[140px]",
+      className: "whitespace-nowrap max-w-[130px]",
       render: (o) => {
         const cust = o.customer as { name: string; short_name?: string | null } | null;
-        return (
-          <span className="block truncate" title={cust?.name || customerMap[o.customer_id]}>
-            {cust?.short_name || cust?.name || customerMap[o.customer_id] || "—"}
-          </span>
-        );
+        return <span className="block truncate" title={cust?.name || customerMap[o.customer_id]}>{cust?.short_name || cust?.name || customerMap[o.customer_id] || "—"}</span>;
       },
     },
     {
       key: "destination",
       label: "Destination",
-      className: "max-w-[180px]",
-      render: (o) => (
-        <span className="block truncate" title={o.destination ?? ""}>{(!o.destination || o.destination === "_custom") ? "—" : o.destination}</span>
-      ),
+      className: "max-w-[160px]",
+      render: (o) => <span className="block truncate" title={o.destination ?? ""}>{(!o.destination || o.destination === "_custom") ? "—" : o.destination}</span>,
     },
     {
       key: "qty",
@@ -425,32 +429,25 @@ export default function OrdersPage() {
     {
       key: "remark",
       label: "Remark",
-      className: "max-w-[150px]",
-      hideClass: "hidden lg:table-cell",
-      render: (o) => (
-        <span className="block truncate" title={o.remark ?? ""}>{o.remark || "—"}</span>
-      ),
+      className: "max-w-[130px]",
+      render: (o) => <span className="block truncate" title={o.remark ?? ""}>{o.remark || "—"}</span>,
     },
     {
       key: "delivery_remark",
       label: "Remark for Driver",
-      className: "max-w-[150px]",
-      hideClass: "hidden lg:table-cell",
-      render: (o) => (
-        <span className="block truncate" title={o.delivery_remark ?? ""}>{o.delivery_remark || "—"}</span>
-      ),
+      className: "max-w-[130px]",
+      render: (o) => <span className="block truncate" title={o.delivery_remark ?? ""}>{o.delivery_remark || "—"}</span>,
     },
     {
       key: "truck",
       label: "Truck No",
       className: "whitespace-nowrap",
-      hideClass: "hidden lg:table-cell",
       render: (o) => {
         if (canInlineEdit && o.stock_sync_status !== "synced") {
           return (
             <div onClick={(e) => e.stopPropagation()}>
               <Select value={o.vehicle_id ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "vehicle_id", v || null); }}>
-                <SelectTrigger className="h-6 w-auto min-w-[80px] text-xs">
+                <SelectTrigger className="h-5 w-auto min-w-[70px] text-[11px]">
                   <SelectValue>{o.vehicle_id ? vehicleMap[o.vehicle_id] ?? "—" : "—"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -462,20 +459,19 @@ export default function OrdersPage() {
             </div>
           );
         }
-        return o.vehicle_id ? vehicleMap[o.vehicle_id] ?? "—" : "—";
+        return txt(o.vehicle_id ? vehicleMap[o.vehicle_id] : null);
       },
     },
     {
       key: "driver",
       label: "Driver",
       className: "whitespace-nowrap",
-      hideClass: "hidden lg:table-cell",
       render: (o) => {
         if (canInlineEdit && o.stock_sync_status !== "synced") {
           return (
             <div onClick={(e) => e.stopPropagation()}>
               <Select value={o.driver_id ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "driver_id", v || null); }}>
-                <SelectTrigger className="h-6 w-auto min-w-[90px] text-xs">
+                <SelectTrigger className="h-5 w-auto min-w-[70px] text-[11px]">
                   <SelectValue>{o.driver_id ? driverMap[o.driver_id] ?? "—" : "—"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -487,20 +483,19 @@ export default function OrdersPage() {
             </div>
           );
         }
-        return o.driver_id ? driverMap[o.driver_id] ?? "—" : "—";
+        return txt(o.driver_id ? driverMap[o.driver_id] : null);
       },
     },
     {
       key: "load_from",
       label: "Load From",
       className: "whitespace-nowrap",
-      hideClass: "hidden lg:table-cell",
       render: (o) => {
         if (canInlineEdit && o.stock_sync_status !== "synced") {
           return (
             <div onClick={(e) => e.stopPropagation()}>
               <Select value={o.load_from ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "load_from", v || null); }}>
-                <SelectTrigger className="h-6 w-auto min-w-[90px] text-xs">
+                <SelectTrigger className="h-5 w-auto min-w-[70px] text-[11px]">
                   <SelectValue placeholder="—" />
                 </SelectTrigger>
                 <SelectContent>
@@ -512,7 +507,7 @@ export default function OrdersPage() {
             </div>
           );
         }
-        return o.load_from ?? "—";
+        return txt(o.load_from);
       },
     },
     {
@@ -522,26 +517,14 @@ export default function OrdersPage() {
       render: (o) => {
         if (canInlineEdit && o.status === "pending" && o.stock_sync_status !== "synced") {
           return (
-            <Button
-              variant="outline"
-              size="xs"
-              className="h-5 text-[10px] border-status-approved-fg/30 text-status-approved-fg"
-              disabled={actionLoading === o.id}
-              onClick={(e) => { e.stopPropagation(); handleAcknowledge(o.id); }}
-            >
+            <Button variant="outline" size="xs" className="h-5 text-[10px] border-status-approved-fg/30 text-status-approved-fg" disabled={actionLoading === o.id} onClick={(e) => { e.stopPropagation(); handleAcknowledge(o.id); }}>
               Acknowledge
             </Button>
           );
         }
         if (canInlineEdit && o.status === "approved" && o.stock_sync_status !== "synced") {
           return (
-            <Button
-              variant="outline"
-              size="xs"
-              className="h-5 text-[10px] border-status-delivered-fg/30 text-status-delivered-fg"
-              disabled={actionLoading === o.id}
-              onClick={(e) => { e.stopPropagation(); handleDeliver(o.id); }}
-            >
+            <Button variant="outline" size="xs" className="h-5 text-[10px] border-status-delivered-fg/30 text-status-delivered-fg" disabled={actionLoading === o.id} onClick={(e) => { e.stopPropagation(); handleDeliver(o.id); }}>
               Delivered
             </Button>
           );
@@ -549,25 +532,32 @@ export default function OrdersPage() {
         return <StatusBadge status={o.status} type="order" />;
       },
     },
+    // --- Extra columns (hidden by default, user can enable via column picker) ---
+    { key: "total", label: "Total", className: "text-right whitespace-nowrap", render: (o) => money(o.total_sale) },
+    { key: "transport", label: "Transport", className: "text-right whitespace-nowrap", render: (o) => money(o.transport) },
+    { key: "unit_price", label: "Unit Price", className: "text-right whitespace-nowrap", render: (o) => money(o.unit_price) },
+    { key: "dn_number", label: "DN No", className: "whitespace-nowrap", render: (o) => txt(o.dn_number) },
+    { key: "invoice_number", label: "Invoice No", className: "whitespace-nowrap", render: (o) => txt(o.invoice_number) },
+    { key: "order_type", label: "Type", className: "whitespace-nowrap capitalize", render: (o) => txt(o.order_type) },
+    { key: "agent_name", label: "Agent", className: "whitespace-nowrap max-w-[100px]", render: (o) => <span className="block truncate">{txt(o.agent_name)}</span> },
+    { key: "receipt_no", label: "Receipt No", className: "whitespace-nowrap", render: (o) => txt(o.receipt_no) },
+    { key: "smart_do_number", label: "Smart DO", className: "whitespace-nowrap", render: (o) => txt(o.smart_do_number) },
+    { key: "references_number", label: "Reference No", className: "whitespace-nowrap", render: (o) => txt(o.references_number) },
+    { key: "document_number", label: "Document No", className: "whitespace-nowrap", render: (o) => txt(o.document_number) },
+    { key: "wages", label: "Wages", className: "text-right whitespace-nowrap", render: (o) => money(o.wages) },
+    { key: "special_allowance", label: "Spcl Allowance", className: "text-right whitespace-nowrap", render: (o) => money(o.special_allowance) },
+    { key: "acceptance", label: "Acceptance", className: "whitespace-nowrap", render: (o) => txt(o.acceptance) },
     {
       key: "actions",
       label: "",
-      className: "text-center whitespace-nowrap w-[32px]",
-      hideClass: "hidden lg:table-cell",
+      className: "text-center whitespace-nowrap w-[28px]",
       render: (o) => {
         if (!canSendToDriver || !o.driver_id) return null;
         const wasSent = sentOrders.has(o.id);
         return (
           <div className="flex items-center gap-0.5 justify-center">
             {wasSent && <Check className="h-2.5 w-2.5 text-green-600" />}
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-5 w-5 ${wasSent ? "text-green-600" : ""}`}
-              title={wasSent ? "Sent — click to resend" : "Send to Driver"}
-              disabled={actionLoading === o.id}
-              onClick={(e) => { e.stopPropagation(); handleNotifyDriver(o.id); }}
-            >
+            <Button variant="ghost" size="icon" className={`h-5 w-5 ${wasSent ? "text-green-600" : ""}`} title={wasSent ? "Sent — click to resend" : "Send to Driver"} disabled={actionLoading === o.id} onClick={(e) => { e.stopPropagation(); handleNotifyDriver(o.id); }}>
               <Send className="h-3 w-3" />
             </Button>
           </div>
@@ -625,7 +615,7 @@ export default function OrdersPage() {
             {total.toLocaleString()} total
           </p>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 items-center">
           <ColumnPicker
             columns={columnPickerOptions}
             visibleColumns={visibleColumns}
@@ -633,7 +623,7 @@ export default function OrdersPage() {
             onReset={resetPreferences}
           />
           {canSendToDriver && (
-            <Button variant="outline" size="sm" onClick={openSummaryDialog} className="gap-1.5 hidden md:flex">
+            <Button variant="outline" size="sm" onClick={openSummaryDialog} className="gap-1.5 h-8 hidden md:flex">
               <MessageSquare className="h-3.5 w-3.5" />
               Dispatch
             </Button>
@@ -641,7 +631,7 @@ export default function OrdersPage() {
           <Button
             size="sm"
             onClick={() => router.push("/orders/new")}
-            className="gap-1.5 hidden md:flex"
+            className="gap-1.5 h-8 hidden md:flex"
           >
             <Plus className="h-3.5 w-3.5" />
             New
@@ -736,15 +726,41 @@ export default function OrdersPage() {
       ) : (
         <div className="border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <Table className="w-full min-w-[800px]">
+            <Table className="w-full">
               <TableHeader>
                 <TableRow className="bg-muted/50">
                   {filteredColumns.map((col) => (
                     <TableHead
                       key={col.key}
-                      className={`h-7 px-1.5 text-xs ${col.className ?? ""} ${col.hideClass ?? ""}`}
+                      className={`h-6 px-1.5 text-[11px] relative ${col.className ?? ""} ${col.hideClass ?? ""}`}
+                      style={prefs.widths[col.key] ? { width: prefs.widths[col.key], minWidth: prefs.widths[col.key] } : undefined}
                     >
                       {col.label}
+                      {col.label && (
+                        <span
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const startX = e.clientX;
+                            const startW = prefs.widths[col.key] ?? (e.currentTarget.parentElement?.offsetWidth ?? 80);
+                            const onMove = (ev: MouseEvent) => {
+                              const w = Math.max(40, startW + ev.clientX - startX);
+                              setColumnWidth(col.key, w);
+                            };
+                            const onUp = () => {
+                              document.removeEventListener("mousemove", onMove);
+                              document.removeEventListener("mouseup", onUp);
+                              document.body.style.cursor = "";
+                              document.body.style.userSelect = "";
+                            };
+                            document.body.style.cursor = "col-resize";
+                            document.body.style.userSelect = "none";
+                            document.addEventListener("mousemove", onMove);
+                            document.addEventListener("mouseup", onUp);
+                          }}
+                        />
+                      )}
                     </TableHead>
                   ))}
                 </TableRow>
@@ -752,17 +768,15 @@ export default function OrdersPage() {
               <TableBody>
                 {groupedOrders.map((group) => (
                   <React.Fragment key={group.date}>
-                    {/* Day group header */}
                     <TableRow className="bg-muted/30 hover:bg-muted/30">
                       <TableCell
                         colSpan={filteredColumns.length}
-                        className="py-1 px-1.5 text-xs font-semibold text-muted-foreground"
+                        className="py-0.5 px-1.5 text-[11px] font-semibold text-muted-foreground"
                       >
                         {group.label}
-                        <span className="ml-2 font-normal">({group.orders.length})</span>
+                        <span className="ml-1.5 font-normal">({group.orders.length})</span>
                       </TableCell>
                     </TableRow>
-                    {/* Order rows */}
                     {group.orders.map((o) => (
                       <TableRow
                         key={o.id}
@@ -772,7 +786,8 @@ export default function OrdersPage() {
                         {filteredColumns.map((col) => (
                           <TableCell
                             key={col.key}
-                            className={`py-1 px-1.5 text-xs ${col.className ?? ""} ${col.hideClass ?? ""}`}
+                            className={`py-0 px-1.5 text-[11px] leading-6 ${col.className ?? ""} ${col.hideClass ?? ""}`}
+                            style={prefs.widths[col.key] ? { width: prefs.widths[col.key], minWidth: prefs.widths[col.key] } : undefined}
                           >
                             {col.render(o)}
                           </TableCell>
