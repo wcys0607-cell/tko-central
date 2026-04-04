@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { getBukkuConfig, bukkuFetch } from "@/lib/bukku/client";
+import { getAuthenticatedUser } from "@/lib/api-auth";
 
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { user, error, status } = await getAuthenticatedUser(["admin"]);
+  if (!user) return NextResponse.json({ error }, { status: status ?? 401 });
 
   const config = await getBukkuConfig();
   if (!config) return NextResponse.json({ error: "Bukku not configured" });

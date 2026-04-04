@@ -58,6 +58,10 @@ export default function LoginPage() {
         return;
       }
 
+      // Clear any stale role cookie from a previous session
+      document.cookie = "tko-role=; path=/; max-age=0";
+      // Set the correct role cookie immediately
+      document.cookie = `tko-role=${driver.role}; path=/; max-age=60; samesite=lax`;
       router.push(getRoleRedirectPath(driver.role as UserRole));
       router.refresh();
     }

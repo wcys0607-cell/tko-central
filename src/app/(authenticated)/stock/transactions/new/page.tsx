@@ -17,6 +17,7 @@ import {
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { sortStockLocations } from "@/lib/stock-sort";
 
 export default function NewTransactionPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -42,7 +43,7 @@ export default function NewTransactionPage() {
       .from("stock_locations")
       .select("*")
       .order("code");
-    if (data) setLocations(data);
+    if (data) setLocations(sortStockLocations(data as StockLocation[]));
   }, [supabase]);
 
   useEffect(() => {
@@ -185,7 +186,7 @@ export default function NewTransactionPage() {
                 <label className="text-sm font-medium">Type</label>
                 <Select value={txType} onValueChange={(v) => v && setTxType(v)}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>{{ purchase: "Purchase", sale: "Sale", transfer: "Transfer", adjustment: "Adjustment" }[txType] ?? txType}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="purchase" label="Purchase">Purchase</SelectItem>
@@ -284,7 +285,7 @@ export default function NewTransactionPage() {
                   <label className="text-sm font-medium">Owner</label>
                   <Select value={owner} onValueChange={(v) => v && setOwner(v)}>
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue>{owner}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Company" label="Company">Company</SelectItem>
@@ -293,7 +294,7 @@ export default function NewTransactionPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Customer Name</label>
+                  <label className="text-sm font-medium">Party</label>
                   <Input
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}

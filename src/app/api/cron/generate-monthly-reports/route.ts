@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   // Get driver wage data
   const { data: orders } = await supabase
     .from("orders")
-    .select("driver_id, wages, allowance, transport, middle_man_id, order_type")
+    .select("driver_id, wages, allowance_liters, allowance_unit_price, special_allowance, transport, middle_man_id, order_type")
     .gte("order_date", firstDay)
     .lte("order_date", lastDayStr)
     .in("status", ["approved", "delivered"]);
@@ -41,7 +41,8 @@ export async function POST(req: NextRequest) {
 
   for (const o of orders ?? []) {
     if (o.driver_id) {
-      const total = (o.wages ?? 0) + (o.allowance ?? 0) + (o.transport ?? 0);
+      const allowanceTotal = (o.allowance_liters ?? 0) * (o.allowance_unit_price ?? 0) + (o.special_allowance ?? 0);
+      const total = (o.wages ?? 0) + allowanceTotal + (o.transport ?? 0);
       if (total > 0) driverWages.set(o.driver_id, (driverWages.get(o.driver_id) ?? 0) + total);
     }
     if (o.order_type === "agent" && o.middle_man_id) agents.add(o.middle_man_id);

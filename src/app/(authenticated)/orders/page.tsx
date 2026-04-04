@@ -25,6 +25,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Plus, Search, Send, MessageSquare, Check } from "lucide-react";
+import { ColumnPicker } from "@/components/ui/column-picker";
+import { useColumnPreferences } from "@/hooks/use-column-preferences";
 import { format } from "date-fns";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "sonner";
@@ -59,6 +61,23 @@ export default function OrdersPage() {
   const canInlineEdit = role === "admin" || role === "manager";
   const canSendToDriver = role === "admin" || role === "manager" || role === "office";
 
+  // Column picker preferences
+  const ALL_COLUMN_KEYS = useMemo(
+    () => ["date", "customer", "load_from", "destination", "qty", "total", "driver", "truck", "status", "actions"],
+    []
+  );
+  const DEFAULT_VISIBLE = useMemo(
+    () => ["date", "customer", "load_from", "destination", "qty", "total", "driver", "truck", "status", "actions"],
+    []
+  );
+  const {
+    visibleColumns,
+    toggleColumn,
+    setColumnWidth,
+    resetPreferences,
+    prefs,
+  } = useColumnPreferences("orders-table", ALL_COLUMN_KEYS, DEFAULT_VISIBLE);
+
   // Lookup maps for names
   const [customerMap, setCustomerMap] = useState<Record<string, string>>({});
   const [productMap, setProductMap] = useState<Record<string, string>>({});
@@ -91,7 +110,7 @@ export default function OrdersPage() {
       setDriverMap(dm);
       setDriverList(driverRows);
       const vehicleRows = ((v.data ?? []) as { id: string; plate_number: string; type?: string | null }[]).filter(
-        (vh) => vh.type === "Road Tanker" || vh.plate_number === "CYL" || vh.plate_number === "SELF COLLECTION"
+        (vh) => vh.type === "Road Tanker"
       );
       const vm: Record<string, string> = {};
       for (const row of vehicleRows) vm[row.id] = row.plate_number;
@@ -106,7 +125,7 @@ export default function OrdersPage() {
     let query = supabase
       .from("orders")
       .select(
-        `id, order_date, customer_id, destination, product_id, quantity_liters, unit_price, total_sale, dn_number, invoice_number, status, bukku_sync_status, driver_id, vehicle_id, load_from, delivery_remark, items:order_items(product_id, quantity_liters), customer:customer_id(id, name, short_name)`,
+        `id, order_date, customer_id, destination, product_id, quantity_liters, unit_price, total_sale, dn_number, invoice_number, status, bukku_sync_status, stock_sync_status, driver_id, vehicle_id, load_from, delivery_remark, items:order_items(product_id, quantity_liters), customer:customer_id(id, name, short_name)`,
         { count: "exact" }
       )
       .order("order_date", { ascending: false })
@@ -172,6 +191,22 @@ export default function OrdersPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "approve" }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      toast.error(data.error || "Failed");
+    }
+    await fetchOrders();
+    setActionLoading(null);
+  }
+
+  // Mark as delivered
+  async function handleDeliver(orderId: string) {
+    setActionLoading(orderId);
+    const res = await fetch(`/api/orders/${orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "deliver" }),
     });
     if (!res.ok) {
       const data = await res.json();
@@ -340,7 +375,7 @@ export default function OrdersPage() {
       className: "whitespace-nowrap",
       hideClass: "hidden lg:table-cell",
       render: (o) => {
-        if (canInlineEdit) {
+        if (canInlineEdit && o.stock_sync_status !== "synced") {
           return (
             <div onClick={(e) => e.stopPropagation()}>
               <Select value={o.load_from ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "load_from", v || null); }}>
@@ -365,7 +400,7 @@ export default function OrdersPage() {
       className: "max-w-[180px]",
       mobileVisible: true,
       render: (o) => (
-        <span className="block truncate text-sm" title={o.destination ?? ""}>{o.destination ?? "—"}</span>
+        <span className="block truncate text-sm" title={o.destination ?? ""}>{(!o.destination || o.destination === "_custom") ? "—" : o.destination}</span>
       ),
     },
     {
@@ -403,7 +438,7 @@ export default function OrdersPage() {
       className: "whitespace-nowrap",
       hideClass: "hidden lg:table-cell",
       render: (o) => {
-        if (canInlineEdit) {
+        if (canInlineEdit && o.stock_sync_status !== "synced") {
           return (
             <div onClick={(e) => e.stopPropagation()}>
               <Select value={o.driver_id ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "driver_id", v || null); }}>
@@ -428,7 +463,7 @@ export default function OrdersPage() {
       className: "whitespace-nowrap",
       hideClass: "hidden xl:table-cell",
       render: (o) => {
-        if (canInlineEdit) {
+        if (canInlineEdit && o.stock_sync_status !== "synced") {
           return (
             <div onClick={(e) => e.stopPropagation()}>
               <Select value={o.vehicle_id ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "vehicle_id", v || null); }}>
@@ -453,7 +488,7 @@ export default function OrdersPage() {
       className: "text-center whitespace-nowrap",
       mobileVisible: true,
       render: (o) => {
-        if (canInlineEdit && o.status === "pending") {
+        if (canInlineEdit && o.status === "pending" && o.stock_sync_status !== "synced") {
           return (
             <Button
               variant="outline"
@@ -466,6 +501,19 @@ export default function OrdersPage() {
             </Button>
           );
         }
+        if (canInlineEdit && o.status === "approved" && o.stock_sync_status !== "synced") {
+          return (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 text-xs border-status-delivered-fg/30 text-status-delivered-fg"
+              disabled={actionLoading === o.id}
+              onClick={(e) => { e.stopPropagation(); handleDeliver(o.id); }}
+            >
+              Delivered
+            </Button>
+          );
+        }
         return <StatusBadge status={o.status} type="order" />;
       },
     },
@@ -474,6 +522,7 @@ export default function OrdersPage() {
       label: "",
       className: "text-center whitespace-nowrap w-[40px]",
       hideClass: "hidden lg:table-cell",
+      noResize: true,
       render: (o) => {
         if (!canSendToDriver || !o.driver_id) return null;
         const wasSent = sentOrders.has(o.id);
@@ -496,6 +545,21 @@ export default function OrdersPage() {
     },
   ];
 
+  // Filter columns based on visibility preferences
+  const filteredColumns = useMemo(
+    () => columns.filter((col) => visibleColumns.includes(col.key)),
+    [columns, visibleColumns]
+  );
+
+  // Column options for the picker (actions is locked/always visible)
+  const columnPickerOptions = useMemo(
+    () =>
+      columns
+        .filter((c) => c.label) // skip empty-label columns like actions
+        .map((c) => ({ key: c.key, label: c.label })),
+    [columns]
+  );
+
   return (
     <div className="p-4 md:p-6 space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -506,6 +570,12 @@ export default function OrdersPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <ColumnPicker
+            columns={columnPickerOptions}
+            visibleColumns={visibleColumns}
+            onToggle={toggleColumn}
+            onReset={resetPreferences}
+          />
           {canSendToDriver && (
             <Button variant="outline" onClick={openSummaryDialog} className="gap-2 hidden md:flex">
               <MessageSquare className="h-4 w-4" />
@@ -546,7 +616,7 @@ export default function OrdersPage() {
           }}
         >
           <SelectTrigger className="w-full md:w-36">
-            <SelectValue placeholder="All Status" />
+            <SelectValue>{{ all: "All Status", pending: "Pending", approved: "Acknowledged", rejected: "Rejected", delivered: "Delivered", cancelled: "Cancelled" }[statusFilter] ?? statusFilter}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all" label="All Status">All Status</SelectItem>
@@ -583,13 +653,15 @@ export default function OrdersPage() {
       {/* Data */}
       <DataList
         data={orders}
-        columns={columns}
+        columns={filteredColumns}
         keyExtractor={(o) => o.id}
         onRowClick={(o) => router.push(`/orders/${o.id}`)}
         loading={loading}
         emptyMessage="No orders found."
         tableClassName="min-w-[900px]"
         alwaysTable
+        columnWidths={prefs.widths}
+        onColumnResize={setColumnWidth}
       />
 
       {/* Pagination */}
@@ -626,7 +698,7 @@ export default function OrdersPage() {
                   <SelectValue placeholder="Select driver...">{summaryDriverId ? driverMap[summaryDriverId] ?? "—" : "Select driver..."}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {driverList.filter((d) => d.role === "driver" && d.name !== "CYL" && d.name !== "Self Collection").map((d) => (
+                  {driverList.filter((d) => d.role === "driver").map((d) => (
                     <SelectItem key={d.id} value={d.id} label={d.name}>{d.name}</SelectItem>
                   ))}
                 </SelectContent>

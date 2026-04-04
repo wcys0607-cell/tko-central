@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   // Get drivers with wages in this month
   const { data: orders } = await admin
     .from("orders")
-    .select("driver_id, wages, allowance, transport")
+    .select("driver_id, wages, allowance_liters, allowance_unit_price, special_allowance, transport")
     .gte("order_date", firstDay)
     .lte("order_date", lastDayStr)
     .in("status", ["approved", "delivered"])
@@ -45,7 +45,8 @@ export async function POST(req: NextRequest) {
   // Sum wages per driver
   const driverWages = new Map<string, number>();
   for (const o of orders ?? []) {
-    const total = (o.wages ?? 0) + (o.allowance ?? 0) + (o.transport ?? 0);
+    const allowanceTotal = (o.allowance_liters ?? 0) * (o.allowance_unit_price ?? 0) + (o.special_allowance ?? 0);
+    const total = (o.wages ?? 0) + allowanceTotal + (o.transport ?? 0);
     if (total > 0) {
       driverWages.set(o.driver_id, (driverWages.get(o.driver_id) ?? 0) + total);
     }

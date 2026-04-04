@@ -15,7 +15,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Link from "next/link";
-import { Plus, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, ArrowLeft, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
+import { toast } from "sonner";
+import { sortStockLocations } from "@/lib/stock-sort";
 
 const TYPE_COLORS: Record<string, string> = {
   purchase: "bg-status-approved-bg text-status-approved-fg",
@@ -28,6 +31,7 @@ const PAGE_SIZE = 50;
 
 export default function TransactionLogPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { role } = useAuth();
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,13 +53,13 @@ export default function TransactionLogPage() {
       .from("stock_locations")
       .select("id, code, name")
       .order("code");
-    if (locs) setLocations(locs);
+    if (locs) setLocations(sortStockLocations(locs as StockLocation[]));
 
     // Build query
     let query = supabase
       .from("stock_transactions")
       .select(
-        "*, source_location:stock_locations!stock_transactions_source_location_id_fkey(id, code, name), dest_location:stock_locations!stock_transactions_dest_location_id_fkey(id, code, name)",
+        "*, order_id, source_location:stock_locations!stock_transactions_source_location_id_fkey(id, code, name), dest_location:stock_locations!stock_transactions_dest_location_id_fkey(id, code, name)",
         { count: "exact" }
       )
       .order("transaction_date", { ascending: false })
@@ -87,6 +91,26 @@ export default function TransactionLogPage() {
   }, [typeFilter, locationFilter, ownerFilter, dateFrom, dateTo]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
+  const canDelete = role === "admin" || role === "manager";
+
+  async function handleDelete(tx: StockTransaction) {
+    const msg = tx.order_id
+      ? "Delete this imported transaction? The linked order will be unlocked and can be re-imported."
+      : "Delete this transaction? The stock balance will be reversed.";
+    if (!confirm(msg)) return;
+
+    const { error } = await supabase
+      .from("stock_transactions")
+      .delete()
+      .eq("id", tx.id);
+
+    if (error) {
+      toast.error("Failed to delete: " + error.message);
+    } else {
+      toast.success("Transaction deleted" + (tx.order_id ? " — order unlocked" : ""));
+      load();
+    }
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-4 animate-fade-in">
@@ -126,7 +150,7 @@ export default function TransactionLogPage() {
             />
             <Select value={typeFilter} onValueChange={(v) => v && setTypeFilter(v)}>
               <SelectTrigger>
-                <SelectValue placeholder="Type" />
+                <SelectValue>{{ all: "All Types", purchase: "Purchase", sale: "Sale", transfer: "Transfer", adjustment: "Adjustment" }[typeFilter] ?? typeFilter}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" label="All Types">All Types</SelectItem>
@@ -151,7 +175,7 @@ export default function TransactionLogPage() {
             </Select>
             <Select value={ownerFilter} onValueChange={(v) => v && setOwnerFilter(v)}>
               <SelectTrigger>
-                <SelectValue placeholder="Owner" />
+                <SelectValue>{{ all: "All Owners", Company: "Company", Partner: "Partner" }[ownerFilter] ?? ownerFilter}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" label="All Owners">All Owners</SelectItem>
@@ -174,23 +198,24 @@ export default function TransactionLogPage() {
               <th className="text-left p-3">Destination</th>
               <th className="text-right p-3">Qty (L)</th>
               <th className="text-right p-3">Price/L</th>
-              <th className="text-left p-3">Customer</th>
+              <th className="text-left p-3">Party</th>
               <th className="text-left p-3">Reference</th>
               <th className="text-left p-3">Owner</th>
               <th className="text-right p-3">Run. Qty</th>
               <th className="text-right p-3">Run. Avg</th>
+              {canDelete && <th className="p-3 w-10"></th>}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={11} className="text-center p-6 text-muted-foreground">
+                <td colSpan={canDelete ? 12 : 11} className="text-center p-6 text-muted-foreground">
                   Loading...
                 </td>
               </tr>
             ) : transactions.length === 0 ? (
               <tr>
-                <td colSpan={11} className="text-center p-6 text-muted-foreground">
+                <td colSpan={canDelete ? 12 : 11} className="text-center p-6 text-muted-foreground">
                   No transactions found
                 </td>
               </tr>
@@ -235,6 +260,19 @@ export default function TransactionLogPage() {
                       ? `RM ${tx.running_avg_cost.toFixed(4)}`
                       : "—"}
                   </td>
+                  {canDelete && (
+                    <td className="p-3 text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDelete(tx)}
+                        title={tx.order_id ? "Cancel import (unlock order)" : "Delete transaction"}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               ))
             )}

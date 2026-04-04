@@ -21,9 +21,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { ArrowLeft, Download, ExternalLink, Pencil, Send } from "lucide-react";
+import { ArrowLeft, Download, ExternalLink, Lock, PackageCheck, Pencil, Send } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import type { Driver, Vehicle } from "@/lib/types";
@@ -42,6 +43,69 @@ function InfoRow({ label, value }: { label: string; value?: string | number | nu
     <div className="flex justify-between py-2 border-b last:border-0">
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="text-sm font-medium text-right max-w-[60%]">{value ?? "—"}</span>
+    </div>
+  );
+}
+
+function InlineNumberRow({
+  label,
+  value,
+  field,
+  step,
+  prefix,
+  suffix,
+  onSave,
+}: {
+  label: string;
+  value: number | null;
+  field: string;
+  step?: string;
+  prefix?: string;
+  suffix?: string;
+  onSave: (field: string, value: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value?.toString() ?? "");
+
+  function handleBlur() {
+    setEditing(false);
+    const newVal = draft.trim() || null;
+    const oldVal = value?.toString() ?? null;
+    if (newVal !== oldVal) {
+      onSave(field, newVal);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div
+        className="flex justify-between py-2 border-b last:border-0 cursor-pointer hover:bg-muted/30 -mx-2 px-2 rounded transition-colors"
+        onClick={() => {
+          setDraft(value?.toString() ?? "");
+          setEditing(true);
+        }}
+      >
+        <span className="text-sm text-muted-foreground">{label}</span>
+        <span className="text-sm font-medium">
+          {value != null && value !== 0 ? `${prefix ?? ""}${value}${suffix ?? ""}` : "—"}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-between items-center py-1.5 border-b last:border-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <Input
+        type="number"
+        step={step ?? "0.01"}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={(e) => { if (e.key === "Enter") handleBlur(); }}
+        className="h-7 w-[120px] text-sm text-right font-medium"
+        autoFocus
+      />
     </div>
   );
 }
@@ -68,16 +132,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         supabase.from("drivers").select("id,name,role").eq("is_active", true).order("name"),
         supabase.from("vehicles").select("id,plate_number,type").eq("is_active", true).order("plate_number"),
       ]);
-      setDrivers((d.data as Driver[]) ?? []);
-      setVehicles(((v.data as Vehicle[]) ?? []).filter((vh) => vh.type === "Road Tanker" || vh.plate_number === "CYL" || vh.plate_number === "SELF COLLECTION"));
+      setDrivers(((d.data as Driver[]) ?? []).filter((dr) => dr.role === "driver"));
+      setVehicles(((v.data as Vehicle[]) ?? []).filter((vh) => vh.type === "Road Tanker"));
     }
     loadLookups();
   }, [supabase]);
 
   // Inline update helper
+  const NUMERIC_FIELDS = ["wages", "transport", "special_allowance", "allowance_liters", "allowance_unit_price"];
   async function inlineUpdate(field: string, value: string | null) {
     if (!order) return;
-    const { error } = await supabase.from("orders").update({ [field]: value }).eq("id", order.id);
+    let dbValue: string | number | null = value;
+    if (NUMERIC_FIELDS.includes(field)) {
+      dbValue = value ? parseFloat(value) : null;
+    }
+    const { error } = await supabase.from("orders").update({ [field]: dbValue }).eq("id", order.id);
     if (error) {
       toast.error("Failed to update");
     } else {
@@ -117,7 +186,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  async function callOrderApi(action: "approve" | "reject" | "cancel", reason?: string) {
+  async function callOrderApi(action: "approve" | "reject" | "cancel" | "deliver", reason?: string) {
     if (!order) return;
     setActionLoading(true);
     const res = await fetch(`/api/orders/${order.id}`, {
@@ -157,6 +226,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     return <div className="p-6 text-muted-foreground">Loading...</div>;
   }
 
+  if (role === "driver" || role === "guest") {
+    router.replace("/driver");
+    return <div className="p-6 text-muted-foreground">Redirecting...</div>;
+  }
+
   if (!order) {
     return <div className="p-6 text-destructive">Order not found.</div>;
   }
@@ -168,12 +242,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const creator = order.creator as { name: string } | null;
   const approver = order.approver as { name: string } | null;
 
-  const canEdit = role === "admin" || role === "office" || role === "manager";
-  const canInlineEdit = role === "admin" || role === "manager";
+  const isPurchase =
+    (customer?.name ?? "").toUpperCase().includes("TOP KIM") &&
+    (order.destination ?? "").toLowerCase().includes("store");
+  const isStockLocked = order.stock_sync_status === "synced";
+  const canEdit = (role === "admin" || role === "office" || role === "manager") && !isStockLocked;
+  const canInlineEdit = (role === "admin" || role === "manager") && !isStockLocked;
   const canApprove = order.status === "pending" && (role === "admin" || role === "manager");
   const canReject = order.status === "pending" && (role === "admin" || role === "manager");
+  const canDeliver = order.status === "approved" && (role === "admin" || role === "manager") && !isStockLocked;
   const canSendToDriver = role === "admin" || role === "manager" || role === "office";
-  const canCancel = role === "admin" && order.status !== "cancelled";
+  const canCancel = role === "admin" && order.status !== "cancelled" && !isStockLocked;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
@@ -208,6 +287,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       </div>
 
+      {isStockLocked && (
+        <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+          <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+          <p className="text-sm text-amber-700 dark:text-amber-400">
+            This order has been imported to Stock Control. To make changes, cancel the stock import first.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Order Info */}
         <Card>
@@ -217,14 +305,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             {order.order_type === "agent" && order.agent_name && (
               <InfoRow label="Agent" value={order.agent_name} />
             )}
-            <InfoRow label="Destination" value={order.destination} />
+            <InfoRow label="Destination" value={order.destination === "_custom" ? "—" : order.destination} />
             {canInlineEdit ? (
               <>
                 <div className="flex justify-between items-center py-2 border-b">
                   <span className="text-sm text-muted-foreground">Load From</span>
                   <Select value={order.load_from ?? ""} onValueChange={(v) => inlineUpdate("load_from", v || null)}>
                     <SelectTrigger className="h-7 w-auto min-w-[140px] text-sm font-medium text-right">
-                      <SelectValue placeholder="Select..." />
+                      <SelectValue>{order.load_from || "Select..."}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {LOAD_FROM_OPTIONS.map((opt) => (
@@ -338,15 +426,28 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <InfoRow label="SST" value={order.sst_amount ? `RM ${order.sst_amount.toLocaleString("en-MY", { minimumFractionDigits: 2 })}` : null} />
                 </div>
               )}
-              {order.wages && <InfoRow label="Wages" value={`RM ${order.wages}`} />}
-              {order.allowance && <InfoRow label="Allowance" value={`RM ${order.allowance}`} />}
-              {order.transport && <InfoRow label="Transport" value={`RM ${order.transport}`} />}
+              {canInlineEdit ? (
+                <>
+                  <InlineNumberRow label="Allowance (LT)" value={order.allowance_liters} field="allowance_liters" step="1" suffix=" L" onSave={inlineUpdate} />
+                  <InlineNumberRow label="Allowance (Unit Price)" value={order.allowance_unit_price} field="allowance_unit_price" step="0.01" prefix="RM " onSave={inlineUpdate} />
+                  <InlineNumberRow label="Special Allowance (RM)" value={order.special_allowance} field="special_allowance" prefix="RM " onSave={inlineUpdate} />
+                  <InlineNumberRow label="Transport (RM)" value={order.transport} field="transport" prefix="RM " onSave={inlineUpdate} />
+                </>
+              ) : (
+                <>
+                  {!!order.allowance_liters && <InfoRow label="Allowance (LT)" value={`${order.allowance_liters.toLocaleString()} L`} />}
+                  {!!order.allowance_unit_price && !!order.allowance_liters && <InfoRow label="Allowance (Unit Price)" value={`RM ${order.allowance_unit_price.toFixed(2)}`} />}
+                  {!!order.special_allowance && <InfoRow label="Special Allowance" value={`RM ${order.special_allowance}`} />}
+                  {order.transport && <InfoRow label="Transport" value={`RM ${order.transport}`} />}
+                </>
+              )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader><CardTitle className="text-base">Sync Status</CardTitle></CardHeader>
             <CardContent className="space-y-3">
+              {!isPurchase && (
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Bukku</span>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -379,7 +480,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   )}
                 </div>
               </div>
-              {order.bukku_so_id && (
+              )}
+              {!isPurchase && order.bukku_so_id && (
                 <>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Bukku SO</span>
@@ -416,19 +518,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   </div>
                 </>
               )}
-              {order.bukku_do_number && (
+              {!isPurchase && order.bukku_do_number && (
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Bukku DN</span>
                   <span className="text-sm text-green-600 font-medium">{order.bukku_do_number}</span>
                 </div>
               )}
-              {order.bukku_invoice_number && (
+              {!isPurchase && order.bukku_invoice_number && (
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Bukku Invoice</span>
                   <span className="text-sm text-green-600 font-medium">{order.bukku_invoice_number}</span>
                 </div>
               )}
-              {order.bukku_payment_status && (
+              {!isPurchase && order.bukku_payment_status && (
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Payment</span>
                   <StatusBadge status={order.bukku_payment_status ?? ""} type="order" />
@@ -460,6 +562,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             className="bg-status-approved-fg hover:bg-status-approved-fg/90"
           >
             Acknowledge
+          </Button>
+        )}
+        {canDeliver && (
+          <Button
+            onClick={() => {
+              if (confirm("Mark this order as delivered?")) callOrderApi("deliver");
+            }}
+            disabled={actionLoading}
+            className="bg-status-delivered-bg text-status-delivered-fg hover:bg-status-delivered-bg/80 border border-status-delivered-fg/20 gap-2"
+          >
+            <PackageCheck className="h-3.5 w-3.5" />
+            Mark as Delivered
           </Button>
         )}
         {canReject && (

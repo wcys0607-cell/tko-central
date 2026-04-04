@@ -26,16 +26,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-export default function CustomersPage() {
+export function CustomersTab() {
   const supabase = useMemo(() => createClient(), []);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [filtered, setFiltered] = useState<Customer[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
-    // Supabase default limit is 1000 — fetch all with range
     const all: Customer[] = [];
     let from = 0;
     const pageSize = 1000;
@@ -51,8 +51,11 @@ export default function CustomersPage() {
       from += pageSize;
     }
     setCustomers(all);
-    // Load agents for the dropdown
-    const { data: agentData } = await supabase.from("agents").select("id,name,is_active").eq("is_active", true).order("name");
+    const { data: agentData } = await supabase
+      .from("agents")
+      .select("id,name,is_active")
+      .eq("is_active", true)
+      .order("name");
     setAgents((agentData as Agent[]) ?? []);
     setLoading(false);
   }, [supabase]);
@@ -122,7 +125,7 @@ export default function CustomersPage() {
       className: "whitespace-nowrap",
       render: (c) => (
         <span className="text-sm text-muted-foreground">
-          {(c.agent as { name?: string } | null)?.name ?? "—"}
+          {(c.agent as { name?: string } | null)?.name ?? "\u2014"}
         </span>
       ),
     },
@@ -154,13 +157,9 @@ export default function CustomersPage() {
   ];
 
   return (
-    <div className="p-4 md:p-6 space-y-4 animate-fade-in">
-      {/* Header */}
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Customers</h1>
-          <p className="text-sm text-muted-foreground">{customers.length} total customers</p>
-        </div>
+        <p className="text-sm text-muted-foreground">{customers.length} total customers</p>
       </div>
 
       {/* Search */}
@@ -184,7 +183,7 @@ export default function CustomersPage() {
         emptyMessage={search ? "No customers match your search." : "No customers yet. Sync from Bukku to import contacts."}
       />
 
-      {/* Edit Agent Dialog (agent field only) */}
+      {/* Edit Agent Dialog */}
       <Dialog open={agentDialogOpen} onOpenChange={setAgentDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

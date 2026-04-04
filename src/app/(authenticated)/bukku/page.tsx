@@ -188,10 +188,12 @@ export default function BukkuPage() {
             (json.failed ? `, ${json.failed} failed` : "")
         );
       } else {
-        setStatusMessage(
-          `${type}: ${json.matched ?? 0} matched, ${json.created ?? 0} created` +
-            (json.failed ? `, ${json.failed} failed` : "")
-        );
+        let msg = `${type}: ${json.matched ?? 0} matched, ${json.created ?? 0} created` +
+            (json.failed ? `, ${json.failed} failed` : "");
+        if (json.errors?.length) {
+          msg += ` — ${json.errors.slice(0, 3).join("; ")}`;
+        }
+        setStatusMessage(msg);
       }
       await load();
     } catch {
@@ -388,7 +390,7 @@ export default function BukkuPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <Select value={invoiceFilter} onValueChange={(v) => v && setInvoiceFilter(v)}>
               <SelectTrigger className="w-[140px]">
-                <SelectValue />
+                <SelectValue>{{ all: "All", pending: "Pending DN/INV", unpaid: "Unpaid", overdue: "Overdue", paid: "Paid" }[invoiceFilter] ?? invoiceFilter}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" label="All">All</SelectItem>
@@ -484,7 +486,7 @@ export default function BukkuPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <Select value={contactFilter} onValueChange={(v) => v && setContactFilter(v)}>
               <SelectTrigger className="w-[140px]">
-                <SelectValue />
+                <SelectValue>{{ all: "All", matched: "Matched", unmatched: "Unmatched" }[contactFilter] ?? contactFilter}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" label="All">All</SelectItem>
@@ -563,7 +565,7 @@ export default function BukkuPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <Select value={productFilter} onValueChange={(v) => v && setProductFilter(v)}>
               <SelectTrigger className="w-[140px]">
-                <SelectValue />
+                <SelectValue>{{ all: "All", matched: "Matched", unmatched: "Unmatched" }[productFilter] ?? productFilter}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" label="All">All</SelectItem>
@@ -661,7 +663,7 @@ export default function BukkuPage() {
                     <span className="text-sm text-muted-foreground whitespace-nowrap">Delete PDFs older than</span>
                     <Select value={cleanupDays} onValueChange={(v) => v && setCleanupDays(v)}>
                       <SelectTrigger className="w-[100px] h-8 text-sm">
-                        <SelectValue />
+                        <SelectValue>{{ "30": "30 days", "60": "60 days", "90": "90 days", "180": "180 days", "365": "1 year" }[cleanupDays] ?? cleanupDays}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="30" label="30 days">30 days</SelectItem>

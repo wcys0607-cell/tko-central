@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { sortStockLocations } from "@/lib/stock-sort";
 import {
   LineChart,
   Line,
@@ -71,9 +72,10 @@ export default function StockHistoryPage() {
       .select("*")
       .order("code");
     if (data) {
-      setLocations(data);
+      const locs = sortStockLocations(data as StockLocation[]);
+      setLocations(locs);
       // Default: select first tank
-      const firstTank = data.find((l: StockLocation) => l.type === "tank");
+      const firstTank = locs.find((l) => l.type === "tank");
       if (firstTank) setSelectedLocIds([firstTank.id]);
     }
     setLoading(false);

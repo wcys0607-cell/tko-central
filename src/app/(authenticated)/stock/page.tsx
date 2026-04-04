@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, History, List } from "lucide-react";
+import { ClipboardCheck, Droplets, History, Import, List } from "lucide-react";
+import { sortStockLocations } from "@/lib/stock-sort";
 
 interface WAC {
   total_qty: number;
@@ -115,7 +116,7 @@ export default function StockDashboardPage() {
           .lte("transaction_date", `${today}T23:59:59`),
       ]);
 
-    if (locRes.data) setLocations(locRes.data);
+    if (locRes.data) setLocations(sortStockLocations(locRes.data));
     if (companyWacRes.data?.[0]) setCompanyWac(companyWacRes.data[0]);
     if (partnerWacRes.data?.[0]) setPartnerWac(partnerWacRes.data[0]);
 
@@ -161,6 +162,16 @@ export default function StockDashboardPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-primary">Stock Control</h1>
         <div className="flex gap-2 flex-wrap">
+          <Link href="/stock/import">
+            <Button variant="outline" size="sm">
+              <Import className="w-4 h-4 mr-1" /> Import Orders
+            </Button>
+          </Link>
+          <Link href="/stock/import-allowance">
+            <Button variant="outline" size="sm">
+              <Droplets className="w-4 h-4 mr-1" /> Import Allowance
+            </Button>
+          </Link>
           <Link href="/stock/transactions">
             <Button variant="outline" size="sm">
               <List className="w-4 h-4 mr-1" /> Transactions

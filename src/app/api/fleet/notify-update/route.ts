@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendWhatsApp } from "@/lib/whatsapp";
 import { getRecipients, filterByDocType } from "@/lib/notification-recipients";
+import { getAuthenticatedUser } from "@/lib/api-auth";
 
 /**
  * Notify recipients when a fleet document is updated/renewed.
@@ -10,6 +11,10 @@ import { getRecipients, filterByDocType } from "@/lib/notification-recipients";
  */
 export async function POST(req: NextRequest) {
   try {
+    // Require authenticated admin/manager/office user
+    const { user, error, status } = await getAuthenticatedUser(["admin", "manager", "office"]);
+    if (!user) return NextResponse.json({ error }, { status: status ?? 401 });
+
     const { plateNumber, docType, expiryDate } = await req.json();
 
     if (!plateNumber || !docType) {

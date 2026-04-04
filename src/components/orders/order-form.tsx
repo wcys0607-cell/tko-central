@@ -98,7 +98,9 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
     remark: existingOrder?.remark ?? "",
     delivery_remark: existingOrder?.delivery_remark ?? "",
     wages: existingOrder?.wages?.toString() ?? "",
-    allowance: existingOrder?.allowance?.toString() ?? "",
+    allowance_liters: existingOrder?.allowance_liters?.toString() ?? "",
+    allowance_unit_price: existingOrder?.allowance_unit_price?.toString() ?? "0.50",
+    special_allowance: existingOrder?.special_allowance?.toString() ?? "",
     transport: existingOrder?.transport?.toString() ?? "",
   });
 
@@ -247,8 +249,8 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
   const totalSST = itemTotals.reduce((s, t) => s + t.sst, 0);
   const grandTotal = totalSale + totalSST;
 
-  // Only show Road Tankers, CYL, and SELF COLLECTION
-  const truckOptions = vehicles.filter((v) => v.type === "Road Tanker" || v.plate_number === "CYL" || v.plate_number === "SELF COLLECTION");
+  // Only show Road Tankers
+  const truckOptions = vehicles.filter((v) => v.type === "Road Tanker");
 
   const isAgent = form.order_type === "agent";
 
@@ -264,7 +266,7 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
     const payload = {
       order_date: form.order_date,
       customer_id: form.customer_id,
-      destination: form.destination.trim() || null,
+      destination: (form.destination.trim() === "_custom" ? "" : form.destination.trim()) || null,
       product_id: firstItem.product_id || null,
       quantity_liters: totalQty || null,
       unit_price: firstItem.unit_price ? parseFloat(firstItem.unit_price) : null,
@@ -279,7 +281,9 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
       remark: form.remark.trim() || null,
       delivery_remark: form.delivery_remark.trim() || null,
       wages: form.wages ? parseFloat(form.wages) : null,
-      allowance: form.allowance ? parseFloat(form.allowance) : null,
+      allowance_liters: form.allowance_liters ? parseFloat(form.allowance_liters) : null,
+      allowance_unit_price: form.allowance_unit_price ? parseFloat(form.allowance_unit_price) : null,
+      special_allowance: form.special_allowance ? parseFloat(form.special_allowance) : null,
       transport: form.transport ? parseFloat(form.transport) : null,
       ...(existingOrder ? {} : { bukku_sync_status: "pending" as const }),
       updated_at: new Date().toISOString(),
@@ -417,13 +421,9 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
 
               {/* Agent info — auto-filled, shown only when customer has agent */}
               {isAgent && form.agent_name && (
-                <div className="p-3 bg-orange-50 dark:bg-orange-950/20 rounded-md border border-orange-200 dark:border-orange-800">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-medium text-orange-600 dark:text-orange-400">Agent Order</span>
-                      <p className="text-sm font-semibold">{form.agent_name}</p>
-                    </div>
-                  </div>
+                <div className="p-2 rounded-md border border-muted">
+                  <span className="text-xs text-muted-foreground">Agent</span>
+                  <p className="text-sm font-medium">{form.agent_name}</p>
                 </div>
               )}
 
@@ -438,7 +438,7 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
                         else if (v === "_custom") setForm({ ...form, destination: "" });
                       }}
                     >
-                      <SelectTrigger><SelectValue placeholder="Select address..." /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Select address...">{(v: string | null) => { if (!v || v === "_custom") return "Type address manually"; return v; }}</SelectValue></SelectTrigger>
                       <SelectContent>
                         {savedAddresses.map((a) => (
                           <SelectItem key={a} value={a} label={a}>{a}</SelectItem>
@@ -643,7 +643,7 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
                   value={form.load_from || "_none"}
                   onValueChange={(v) => v && setForm({ ...form, load_from: v === "_none" ? "" : v })}
                 >
-                  <SelectTrigger><SelectValue placeholder="Select source..." /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Select source...">{(v: string | null) => { if (!v || v === "_none") return "None"; return v; }}</SelectValue></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none" label="None">None</SelectItem>
                     {LOAD_FROM_OPTIONS.map((opt) => (
@@ -653,19 +653,23 @@ export default function OrderForm({ existingOrder }: OrderFormProps) {
                 </Select>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-sm font-medium">Allowance (RM)</label>
-                  <Input type="number" value={form.allowance} onChange={(e) => setForm({ ...form, allowance: e.target.value })} placeholder="0.00" />
+                  <label className="text-sm font-medium">Allowance (LT)</label>
+                  <Input type="number" value={form.allowance_liters} onChange={(e) => setForm({ ...form, allowance_liters: e.target.value })} placeholder="0" />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Transport (RM)</label>
-                  <Input type="number" value={form.transport} onChange={(e) => setForm({ ...form, transport: e.target.value })} placeholder="0.00" />
+                  <label className="text-sm font-medium">Allowance (Unit Price)</label>
+                  <Input type="number" step="0.01" value={form.allowance_unit_price} onChange={(e) => setForm({ ...form, allowance_unit_price: e.target.value })} placeholder="0.50" />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Wages (RM)</label>
-                  <Input type="number" value={form.wages} onChange={(e) => setForm({ ...form, wages: e.target.value })} placeholder="0.00" />
+                  <label className="text-sm font-medium">Special Allowance (RM)</label>
+                  <Input type="number" value={form.special_allowance} onChange={(e) => setForm({ ...form, special_allowance: e.target.value })} placeholder="0.00" />
                 </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Transport (RM)</label>
+                <Input type="number" value={form.transport} onChange={(e) => setForm({ ...form, transport: e.target.value })} placeholder="0.00" />
               </div>
             </CardContent>
           </Card>

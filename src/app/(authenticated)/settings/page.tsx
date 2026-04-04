@@ -6,6 +6,7 @@ import { AppConfigTab } from "@/components/settings/app-config-tab";
 import { UserManagementTab } from "@/components/settings/user-management-tab";
 import { AgentsTab } from "@/components/settings/agents-tab";
 import { NotificationRecipientsTab } from "@/components/settings/notification-recipients-tab";
+import { CustomersTab } from "@/components/settings/customers-tab";
 
 export default function SettingsPage() {
   return (
@@ -28,6 +29,7 @@ export default function SettingsPage() {
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="users">User Management</TabsTrigger>
           <TabsTrigger value="agents">Agents</TabsTrigger>
+          <TabsTrigger value="customers">Customers</TabsTrigger>
         </TabsList>
 
         <TabsContent value="config" className="mt-4">
@@ -44,6 +46,10 @@ export default function SettingsPage() {
 
         <TabsContent value="agents" className="mt-4">
           <AgentsTab />
+        </TabsContent>
+
+        <TabsContent value="customers" className="mt-4">
+          <CustomersTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -357,7 +357,7 @@ export default function VehicleDetailPage({
           <div className="flex items-center gap-1">
             <Select value={assignDriverId} onValueChange={(v) => v && setAssignDriverId(v)}>
               <SelectTrigger className="h-8 w-[160px] text-xs">
-                <SelectValue placeholder="Add driver..." />
+                <SelectValue>{assignDriverId ? unassignedDrivers.find((d) => d.id === assignDriverId)?.name ?? "Add driver..." : "Add driver..."}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {unassignedDrivers.map((d) => (

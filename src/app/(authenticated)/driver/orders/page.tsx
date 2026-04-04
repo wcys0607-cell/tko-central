@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { Order } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
@@ -45,7 +44,6 @@ function dateLabel(dateStr: string): string {
 }
 
 export default function DriverOrdersPage() {
-  const supabase = useMemo(() => createClient(), []);
   const { driverProfile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,22 +54,15 @@ export default function DriverOrdersPage() {
 
     const { from, to } = getDateRange();
 
-    const { data } = await supabase
-      .from("orders")
-      .select(
-        `*, customer:customers!orders_customer_id_fkey(id, name, short_name),
-         items:order_items(product_id, quantity_liters, product:product_id(name))`
-      )
-      .eq("driver_id", driverProfile.id)
-      .eq("status", "approved")
-      .gte("order_date", from)
-      .lte("order_date", to)
-      .order("order_date", { ascending: false })
-      .order("created_at", { ascending: true });
-
-    if (data) setOrders(data);
+    try {
+      const res = await fetch(`/api/driver/orders?driver_id=${driverProfile.id}&from=${from}&to=${to}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setOrders(data);
+    } catch {
+      // ignore
+    }
     setLoading(false);
-  }, [supabase, driverProfile]);
+  }, [driverProfile]);
 
   useEffect(() => {
     load();

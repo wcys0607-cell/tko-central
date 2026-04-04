@@ -7,16 +7,19 @@ import type { Vehicle } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
-import { ArrowLeft, Camera, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, Camera, CheckCircle2, ImagePlus, Loader2, Trash2, XCircle } from "lucide-react";
 
 const CHECKLIST_ITEMS = [
   { key: "tyres_ok", label: "Tyres" },
-  { key: "brakes_ok", label: "Brakes" },
-  { key: "engine_oil_ok", label: "Engine Oil" },
-  { key: "coolant_ok", label: "Coolant" },
   { key: "lights_ok", label: "Lights" },
+  { key: "brakes_ok", label: "Brakes" },
+  { key: "engine_oil_ok", label: "Engine Oil Level" },
+  { key: "coolant_ok", label: "Coolant Water" },
+  { key: "battery_water_ok", label: "Battery Water" },
   { key: "fire_extinguisher_ok", label: "Fire Extinguisher" },
+  { key: "compartment_ok", label: "Compartment Check" },
 ] as const;
 
 export default function DriverChecklistPage() {
@@ -25,29 +28,29 @@ export default function DriverChecklistPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<string>("");
   const [odometer, setOdometer] = useState("");
-  const [checks, setChecks] = useState<Record<string, boolean>>({
-    tyres_ok: true,
-    brakes_ok: true,
-    engine_oil_ok: true,
-    coolant_ok: true,
-    lights_ok: true,
-    fire_extinguisher_ok: true,
+  const [meterReading, setMeterReading] = useState("");
+  const [checks, setChecks] = useState<Record<string, boolean>>(() => {
+    const defaults: Record<string, boolean> = {};
+    for (const item of CHECKLIST_ITEMS) defaults[item.key] = false;
+    return defaults;
   });
-  const [defectDetails, setDefectDetails] = useState("");
-  const [defectPhoto, setDefectPhoto] = useState<File | null>(null);
+  const [issuesFound, setIssuesFound] = useState("");
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const selectedVehicleData = vehicles.find((v) => v.id === selectedVehicle);
+  const isSmallRoadTanker = selectedVehicleData?.type === "Small Tanker";
+
   const loadVehicles = useCallback(async () => {
     if (!driverProfile?.id) { setLoading(false); return; }
 
-    // Check if user is a driver — if so, only show assigned vehicles
     const isDriver = driverProfile.role === "driver";
 
     if (isDriver) {
-      // Load only assigned vehicles from junction table
       const { data: assignments } = await supabase
         .from("driver_vehicle_assignments")
         .select("vehicle_id")
@@ -68,7 +71,6 @@ export default function DriverChecklistPage() {
         }
       }
     } else {
-      // Admin/manager/office: show all vehicles
       const { data } = await supabase
         .from("vehicles")
         .select("*")
@@ -84,31 +86,50 @@ export default function DriverChecklistPage() {
     loadVehicles();
   }, [loadVehicles]);
 
+  function handlePhotoAdd(files: FileList | null) {
+    if (!files) return;
+    const newFiles = Array.from(files);
+    setPhotos((prev) => [...prev, ...newFiles]);
+    // Generate previews
+    for (const file of newFiles) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setPhotoPreviews((prev) => [...prev, e.target?.result as string]);
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  function removePhoto(index: number) {
+    setPhotos((prev) => prev.filter((_, i) => i !== index));
+    setPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
+  }
+
   const hasDefect = Object.values(checks).some((v) => !v);
 
   async function handleSubmit() {
     if (!selectedVehicle) { setError("Please select a vehicle"); return; }
     if (!odometer) { setError("Please enter ODO reading"); return; }
+    if (isSmallRoadTanker && !meterReading) { setError("Please enter meter reading"); return; }
 
     setSaving(true);
     setError("");
 
-    let photoUrl: string | null = null;
-
-    // Upload defect photo if exists
-    if (defectPhoto && hasDefect) {
-      const ext = defectPhoto.name.split(".").pop();
-      const path = `checklists/${driverProfile?.id}/${Date.now()}.${ext}`;
+    // Upload photos
+    const uploadedUrls: string[] = [];
+    for (const photo of photos) {
+      const ext = photo.name.split(".").pop();
+      const path = `checklists/${driverProfile?.id}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
       const { error: uploadErr } = await supabase.storage
         .from("fleet-docs")
-        .upload(path, defectPhoto);
+        .upload(path, photo);
       if (uploadErr) {
         setError(`Photo upload failed: ${uploadErr.message}`);
         setSaving(false);
         return;
       }
       const { data: urlData } = supabase.storage.from("fleet-docs").getPublicUrl(path);
-      photoUrl = urlData.publicUrl;
+      uploadedUrls.push(urlData.publicUrl);
     }
 
     const { error: insertErr } = await supabase.from("driver_checklists").insert({
@@ -116,10 +137,13 @@ export default function DriverChecklistPage() {
       vehicle_id: selectedVehicle,
       check_date: new Date().toISOString(),
       odometer: parseInt(odometer),
+      meter_reading: isSmallRoadTanker && meterReading ? parseFloat(meterReading) : null,
       ...checks,
       has_defect: hasDefect,
-      defect_details: hasDefect ? defectDetails || null : null,
-      defect_photo_url: photoUrl,
+      defect_details: hasDefect ? issuesFound || null : null,
+      issues_found: issuesFound || null,
+      defect_photo_url: uploadedUrls[0] || null,
+      photo_urls: uploadedUrls,
     });
 
     if (insertErr) {
@@ -140,7 +164,7 @@ export default function DriverChecklistPage() {
           driverName: driverProfile?.name,
           odometer: parseInt(odometer),
           hasDefect,
-          defectDetails: hasDefect ? defectDetails : null,
+          defectDetails: hasDefect ? issuesFound : null,
         }),
       });
     } catch {
@@ -149,6 +173,18 @@ export default function DriverChecklistPage() {
 
     setSaving(false);
     setSuccess(true);
+  }
+
+  function resetForm() {
+    setSuccess(false);
+    setOdometer("");
+    setMeterReading("");
+    const defaults: Record<string, boolean> = {};
+    for (const item of CHECKLIST_ITEMS) defaults[item.key] = false;
+    setChecks(defaults);
+    setIssuesFound("");
+    setPhotos([]);
+    setPhotoPreviews([]);
   }
 
   if (loading) return <div className="p-6 text-muted-foreground">Loading...</div>;
@@ -160,18 +196,7 @@ export default function DriverChecklistPage() {
         <h2 className="text-2xl font-bold text-status-approved-fg mb-2">Checklist Submitted!</h2>
         <p className="text-muted-foreground mb-6">Your daily inspection has been recorded.</p>
         <div className="flex gap-3">
-          <Button onClick={() => {
-            setSuccess(false);
-            setOdometer("");
-            setChecks({
-              tyres_ok: true, brakes_ok: true, engine_oil_ok: true,
-              coolant_ok: true, lights_ok: true, fire_extinguisher_ok: true,
-            });
-            setDefectDetails("");
-            setDefectPhoto(null);
-          }}>
-            New Checklist
-          </Button>
+          <Button onClick={resetForm}>New Checklist</Button>
           <Link href="/driver">
             <Button variant="outline">Back to Portal</Button>
           </Link>
@@ -216,19 +241,35 @@ export default function DriverChecklistPage() {
         </CardContent>
       </Card>
 
-      {/* ODO Reading */}
+      {/* ODO Reading + Meter Reading */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">ODO Reading</CardTitle>
+          <CardTitle className="text-base">Readings</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Input
-            type="number"
-            value={odometer}
-            onChange={(e) => setOdometer(e.target.value)}
-            placeholder="Enter current ODO"
-            className="text-lg h-12"
-          />
+        <CardContent className="space-y-3">
+          <div>
+            <label className="text-sm font-medium">ODO Reading *</label>
+            <Input
+              type="number"
+              value={odometer}
+              onChange={(e) => setOdometer(e.target.value)}
+              placeholder="Enter current ODO"
+              className="text-lg h-12"
+            />
+          </div>
+          {isSmallRoadTanker && (
+            <div>
+              <label className="text-sm font-medium">Meter Reading *</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={meterReading}
+                onChange={(e) => setMeterReading(e.target.value)}
+                placeholder="Enter meter reading"
+                className="text-lg h-12"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -247,7 +288,7 @@ export default function DriverChecklistPage() {
                   className={`p-2 rounded-lg transition-colors h-11 w-11 flex items-center justify-center ${
                     checks[item.key]
                       ? "bg-status-approved-fg text-white"
-                      : "bg-muted text-muted-foreground"
+                      : "bg-background border text-muted-foreground"
                   }`}
                 >
                   <CheckCircle2 className="w-6 h-6" />
@@ -257,7 +298,7 @@ export default function DriverChecklistPage() {
                   className={`p-2 rounded-lg transition-colors h-11 w-11 flex items-center justify-center ${
                     !checks[item.key]
                       ? "bg-destructive text-white"
-                      : "bg-muted text-muted-foreground"
+                      : "bg-background border text-muted-foreground"
                   }`}
                 >
                   <XCircle className="w-6 h-6" />
@@ -268,39 +309,68 @@ export default function DriverChecklistPage() {
         </CardContent>
       </Card>
 
-      {/* Defect Section */}
-      {hasDefect && (
-        <Card className="border-destructive/30 bg-destructive/10">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base text-destructive">Defect Report</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <textarea
-              className="w-full border rounded-md p-3 text-sm min-h-[100px] resize-y"
-              value={defectDetails}
-              onChange={(e) => setDefectDetails(e.target.value)}
-              placeholder="Describe the defect..."
-            />
-            <div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <div className="flex items-center gap-2 bg-white border rounded-lg px-4 py-3 hover:bg-muted">
-                  <Camera className="w-5 h-5" />
-                  <span className="text-sm font-medium">
-                    {defectPhoto ? defectPhoto.name : "Take Photo"}
-                  </span>
+      {/* Issues Found */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Issues Found</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            value={issuesFound}
+            onChange={(e) => setIssuesFound(e.target.value)}
+            placeholder="Describe any issues found (optional)..."
+            className="min-h-[80px] resize-y"
+          />
+        </CardContent>
+      </Card>
+
+      {/* Photo Proof */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Photo Proof</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Photo previews */}
+          {photoPreviews.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {photoPreviews.map((src, i) => (
+                <div key={i} className="relative group">
+                  <img
+                    src={src}
+                    alt={`Photo ${i + 1}`}
+                    className="w-full h-24 object-cover rounded-lg border"
+                  />
+                  <button
+                    onClick={() => removePhoto(i)}
+                    className="absolute top-1 right-1 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
                 </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="sr-only"
-                  onChange={(e) => setDefectPhoto(e.target.files?.[0] ?? null)}
-                />
-              </label>
+              ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+          <label className="flex cursor-pointer">
+            <div className="flex items-center gap-2 bg-muted border border-dashed rounded-lg px-4 py-3 hover:bg-muted/70 w-full justify-center">
+              <ImagePlus className="w-5 h-5 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">
+                {photos.length > 0 ? "Add More Photos" : "Add Photos"}
+              </span>
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              capture="environment"
+              className="sr-only"
+              onChange={(e) => handlePhotoAdd(e.target.files)}
+            />
+          </label>
+          {photos.length > 0 && (
+            <p className="text-xs text-muted-foreground text-center">{photos.length} photo{photos.length !== 1 ? "s" : ""} selected</p>
+          )}
+        </CardContent>
+      </Card>
 
       {error && (
         <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</p>
@@ -311,7 +381,14 @@ export default function DriverChecklistPage() {
         className="w-full h-14 text-lg bg-status-approved-fg hover:bg-status-approved-fg/90"
         disabled={saving}
       >
-        {saving ? "Submitting..." : "Submit Checklist"}
+        {saving ? (
+          <>
+            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+            Submitting...
+          </>
+        ) : (
+          "Submit Checklist"
+        )}
       </Button>
     </div>
   );

@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdmin } from "@supabase/supabase-js";
+import { getAuthenticatedUser } from "@/lib/api-auth";
 
 const BUCKET = "bukku-docs";
 
 /** GET — return storage stats (file count + total size) */
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { user, error, status } = await getAuthenticatedUser(["admin"]);
+  if (!user) return NextResponse.json({ error }, { status: status ?? 401 });
 
   const admin = createAdmin(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

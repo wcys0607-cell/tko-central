@@ -50,12 +50,18 @@ export default function DriverWagesPage() {
     const lastDay = new Date(year, m, 0);
     const lastDayStr = `${year}-${String(m).padStart(2, "0")}-${String(lastDay.getDate()).padStart(2, "0")}`;
 
+    // Only show orders 3+ days after delivery date (to allow backend amendments)
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    const cutoffDate = threeDaysAgo.toISOString().split("T")[0];
+    const effectiveLastDay = lastDayStr < cutoffDate ? lastDayStr : cutoffDate;
+
     const { data } = await supabase
       .from("orders")
       .select("*, customer:customers!orders_customer_id_fkey(id, name)")
       .eq("driver_id", driverProfile.id)
       .gte("order_date", firstDay)
-      .lte("order_date", lastDayStr)
+      .lte("order_date", effectiveLastDay)
       .in("status", ["approved", "delivered"])
       .order("order_date");
 
@@ -68,7 +74,7 @@ export default function DriverWagesPage() {
   }, [load]);
 
   const totalWages = orders.reduce((s, o) => s + (o.wages ?? 0), 0);
-  const totalAllowance = orders.reduce((s, o) => s + (o.allowance ?? 0), 0);
+  const totalAllowance = orders.reduce((s, o) => s + ((o.allowance_liters ?? 0) * (o.allowance_unit_price ?? 0)) + (o.special_allowance ?? 0), 0);
   const totalTransport = orders.reduce((s, o) => s + (o.transport ?? 0), 0);
 
   return (
@@ -84,7 +90,7 @@ export default function DriverWagesPage() {
 
       <Select value={month} onValueChange={(v) => v && setMonth(v)}>
         <SelectTrigger>
-          <SelectValue />
+          <SelectValue>{monthOptions.find((o) => o.value === month)?.label ?? month}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           {monthOptions.map((o) => (
@@ -161,7 +167,7 @@ export default function DriverWagesPage() {
                         {o.wages ? o.wages.toFixed(2) : "—"}
                       </td>
                       <td className="p-2 text-right text-xs font-mono">
-                        {o.allowance ? o.allowance.toFixed(2) : "—"}
+                        {((o.allowance_liters ?? 0) * (o.allowance_unit_price ?? 0) + (o.special_allowance ?? 0)) || "—"}
                       </td>
                     </tr>
                   ))}

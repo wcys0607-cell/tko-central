@@ -53,11 +53,9 @@ export function TopBar() {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4">
-      {/* Desktop: sidebar trigger */}
+      {/* Sidebar trigger + title */}
       <SidebarTrigger className="-ml-1 hidden md:flex" />
-
-      {/* Mobile: page title */}
-      <h2 className="md:hidden text-base font-semibold text-foreground">
+      <h2 className="text-base font-semibold text-foreground">
         {pageTitle}
       </h2>
 

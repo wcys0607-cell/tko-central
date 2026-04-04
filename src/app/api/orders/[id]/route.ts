@@ -10,7 +10,7 @@ import {
 } from "@/lib/whatsapp";
 import { voidBukkuChain } from "@/lib/bukku/invoices";
 
-const VALID_ACTIONS = ["approve", "reject", "cancel"] as const;
+const VALID_ACTIONS = ["approve", "reject", "cancel", "deliver"] as const;
 type OrderAction = (typeof VALID_ACTIONS)[number];
 
 // Allowed status transitions
@@ -18,6 +18,7 @@ const ALLOWED_TRANSITIONS: Record<OrderAction, string[]> = {
   approve: ["pending"],
   reject: ["pending"],
   cancel: ["pending", "approved", "delivered"],
+  deliver: ["approved"],
 };
 
 async function getAuthenticatedDriver(supabase: Awaited<ReturnType<typeof createClient>>) {
@@ -88,12 +89,30 @@ export async function PATCH(
   }
 
   if (validAction === "approve") {
+    // Purchase orders (customer = TOP KIM, destination = Store) don't sync to Bukku
+    const customerName = ((order.customer as { name?: string } | null)?.name ?? "").toUpperCase();
+    const destination = (order.destination ?? "").toLowerCase();
+    const isPurchase = customerName.includes("TOP KIM") && destination.includes("store");
+
     const { error } = await supabase
       .from("orders")
       .update({
         status: "approved",
         approved_by: driver.id, // derived from session, not client
-        bukku_sync_status: "pending",
+        ...(isPurchase ? {} : { bukku_sync_status: "pending" }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  }
+
+  if (validAction === "deliver") {
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        status: "delivered",
         updated_at: new Date().toISOString(),
       })
       .eq("id", id);

@@ -117,7 +117,9 @@ export interface Order {
   references_number: string | null;
   document_number: string | null;
   wages: number | null;
-  allowance: number | null;
+  special_allowance: number | null;
+  allowance_liters: number | null;
+  allowance_unit_price: number | null;
   transport: number | null;
   r95_liters: number | null;
   ado_liters: number | null;

@@ -11,6 +11,7 @@ import Link from "next/link";
 import { ArrowLeft, Camera, X } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { sortStockLocations } from "@/lib/stock-sort";
 
 function varianceColor(pct: number): string {
   const abs = Math.abs(pct);
@@ -50,9 +51,10 @@ export default function NewStockTakePage() {
       .order("code");
 
     if (data) {
-      setLocations(data);
+      const sorted = sortStockLocations(data as StockLocation[]);
+      setLocations(sorted);
       setEntries(
-        data.map((l: StockLocation) => ({
+        sorted.map((l: StockLocation) => ({
           locationId: l.id,
           locationName: l.name || l.code,
           locationType: l.type ?? "tank",

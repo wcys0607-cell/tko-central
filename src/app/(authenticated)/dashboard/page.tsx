@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   ChevronRight,
 } from "lucide-react";
+import { sortStockLocations } from "@/lib/stock-sort";
 import {
   Bar,
   XAxis,
@@ -126,7 +127,7 @@ export default function DashboardPage() {
       const tanks = (data ?? []) as (TankLevel & { low_threshold?: number | null })[];
       setTotalStock(tanks.reduce((s, t) => s + (t.current_balance ?? 0), 0));
       setLowStockCount(tanks.filter((t) => t.low_threshold && (t.current_balance ?? 0) < t.low_threshold).length);
-      setTankLevels(tanks);
+      setTankLevels(sortStockLocations(tanks));
     } catch (e) { console.error("Dashboard: stock", e); }
 
     try {

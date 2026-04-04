@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/select";
 import Link from "next/link";
 import { ArrowLeft, Download, Send, Loader2 } from "lucide-react";
-import { exportMultiSheet } from "@/lib/export-excel";
 
 interface DriverWage {
   driver_id: string;
@@ -67,7 +66,7 @@ export default function WagesReportPage() {
     const { data: orders } = await supabase
       .from("orders")
       .select(
-        "order_date, quantity_liters, wages, allowance, transport, destination, load_from, driver_id, driver:drivers!orders_driver_id_fkey(id, name), vehicle:vehicles!orders_vehicle_id_fkey(plate_number), customer:customers!orders_customer_id_fkey(name)"
+        "order_date, quantity_liters, wages, allowance_liters, allowance_unit_price, special_allowance, transport, destination, load_from, driver_id, driver:drivers!orders_driver_id_fkey(id, name), vehicle:vehicles!orders_vehicle_id_fkey(plate_number, capacity_liters), customer:customers!orders_customer_id_fkey(name)"
       )
       .gte("order_date", firstDay)
       .lte("order_date", lastDayStr)
@@ -81,8 +80,12 @@ export default function WagesReportPage() {
     for (const o of orders ?? []) {
       const driverId = o.driver_id as string;
       const driverName = Array.isArray(o.driver) ? o.driver[0]?.name : o.driver?.name;
-      const platNumber = Array.isArray(o.vehicle) ? o.vehicle[0]?.plate_number : o.vehicle?.plate_number;
+      const veh = Array.isArray(o.vehicle) ? o.vehicle[0] : o.vehicle;
+      const platNumber = veh?.plate_number ?? "";
+      const capacity = veh?.capacity_liters;
+      const truckLabel = platNumber;
       const custName = Array.isArray(o.customer) ? o.customer[0]?.name : o.customer?.name;
+      const allowance = (o.allowance_liters ?? 0) * (o.allowance_unit_price ?? 0) + (o.special_allowance ?? 0);
 
       if (!driverMap.has(driverId)) {
         driverMap.set(driverId, {
@@ -101,18 +104,18 @@ export default function WagesReportPage() {
       dw.deliveries++;
       dw.total_qty += o.quantity_liters ?? 0;
       dw.total_wages += o.wages ?? 0;
-      dw.total_allowance += o.allowance ?? 0;
+      dw.total_allowance += allowance;
       dw.total_transport += o.transport ?? 0;
       dw.orders.push({
         order_date: o.order_date,
-        plate_number: platNumber ?? "",
+        plate_number: truckLabel,
         customer_name: custName ?? "",
         load_from: o.load_from ?? "",
         destination: o.destination ?? "",
         quantity_liters: o.quantity_liters ?? 0,
         transport: o.transport ?? 0,
         wages: o.wages ?? 0,
-        allowance: o.allowance ?? 0,
+        allowance,
       });
     }
 
@@ -124,26 +127,219 @@ export default function WagesReportPage() {
     generate();
   }, [generate]);
 
-  function handleDownload() {
-    const sheets = data.map((dw) => ({
-      name: dw.driver_name,
-      title: `Wages Statement — ${dw.driver_name} — ${month}`,
-      totalRow: true,
-      headers: [
-        { key: "order_date", label: "Date" },
-        { key: "plate_number", label: "Truck" },
-        { key: "customer_name", label: "Customer" },
-        { key: "load_from", label: "Load From" },
-        { key: "destination", label: "Destination" },
-        { key: "quantity_liters", label: "Qty (L)", format: "number" as const },
-        { key: "transport", label: "Transport", format: "currency" as const },
-        { key: "wages", label: "Wages", format: "currency" as const },
-        { key: "allowance", label: "Allowance", format: "currency" as const },
-      ],
-      data: dw.orders as unknown as Record<string, unknown>[],
-    }));
+  async function handleDownload() {
+    const XLSX = await import("xlsx-js-style");
+    const wb = XLSX.utils.book_new();
+    const monthLabel = monthOptions.find((o) => o.value === month)?.label ?? month;
 
-    exportMultiSheet(sheets, `TKO_Wages_${month}`);
+    // Style definitions
+    const fontDefault = { name: "Arial", sz: 10 };
+    const fontSmall = { name: "Arial", sz: 9 };
+    const companyFont = { name: "Arial", sz: 14, bold: true, color: { rgb: "1a1a2e" } };
+    const payslipFont = { name: "Arial", sz: 12, bold: true, color: { rgb: "1a1a2e" } };
+    const addressFont = { name: "Arial", sz: 8, color: { rgb: "666666" } };
+    const infoFont = { name: "Arial", sz: 10, bold: true };
+    const headerFont = { name: "Arial", sz: 9, bold: true, color: { rgb: "FFFFFF" } };
+    const headerFill = { fgColor: { rgb: "2d3748" } };
+    const totalFont = { name: "Arial", sz: 10, bold: true };
+    const totalFill = { fgColor: { rgb: "e2e8f0" } };
+    const borderThin = { style: "thin", color: { rgb: "cccccc" } };
+    const borderAll = { top: borderThin, bottom: borderThin, left: borderThin, right: borderThin };
+    const borderHeader = {
+      top: { style: "thin", color: { rgb: "2d3748" } },
+      bottom: { style: "thin", color: { rgb: "2d3748" } },
+      left: { style: "thin", color: { rgb: "2d3748" } },
+      right: { style: "thin", color: { rgb: "2d3748" } },
+    };
+    const borderTotal = {
+      top: { style: "medium", color: { rgb: "2d3748" } },
+      bottom: { style: "double", color: { rgb: "2d3748" } },
+      left: borderThin,
+      right: borderThin,
+    };
+
+    const numFmt2dp = "#,##0.00";
+    const numFmtQty = "#,##0";
+
+    for (const dw of data) {
+      // Build raw data first
+      const rows: unknown[][] = [];
+      // Row 1: Company name
+      rows.push(["TOP KIM OIL SDN. BHD.", "", "", "", "", "", "", "", "DRIVER PAYSLIP"]);
+      // Row 2: Address
+      rows.push(["337, PTD 41613 (LOT 39305), JALAN IDAMAN 1/17, TAMAN DESA IDAMAN, 81400 SENAI, JOHOR."]);
+      // Row 3: empty separator
+      rows.push([]);
+      // Row 4: Driver + Month info
+      rows.push([`Driver: ${dw.driver_name}`, "", "", "", "", "", "", "", `Month: ${monthLabel}`]);
+      // Row 5: empty
+      rows.push([]);
+      // Row 6: headers
+      rows.push(["Date", "Truck No.", "Customer Name", "Load From", "Destination", "Quantity (L)", "Transport (RM)", "Wages (RM)", "Allowance (RM)"]);
+
+      // Data rows (row 7+)
+      for (const o of dw.orders) {
+        rows.push([
+          o.order_date,
+          o.plate_number,
+          o.customer_name,
+          o.load_from,
+          o.destination,
+          o.quantity_liters || null,
+          o.transport || null,
+          o.wages || null,
+          o.allowance || null,
+        ]);
+      }
+
+      // Total row
+      const lastDataRow = 6 + dw.orders.length;
+      rows.push([
+        "", "", "", "", "TOTAL", "",
+        { f: `SUM(G7:G${lastDataRow})` },
+        { f: `SUM(H7:H${lastDataRow})` },
+        { f: `SUM(I7:I${lastDataRow})` },
+      ]);
+
+      // Grand total row
+      rows.push([
+        "", "", "", "", "", "", "", "GRAND TOTAL",
+        { f: `G${lastDataRow + 1}+H${lastDataRow + 1}+I${lastDataRow + 1}` },
+      ]);
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+
+      // Column widths (A4 portrait optimised)
+      ws["!cols"] = [
+        { wch: 11 },  // A: Date
+        { wch: 11 },  // B: Truck No.
+        { wch: 28 },  // C: Customer Name
+        { wch: 18 },  // D: Load From
+        { wch: 20 },  // E: Destination
+        { wch: 11 },  // F: Quantity
+        { wch: 11 },  // G: Transport
+        { wch: 11 },  // H: Wages
+        { wch: 11 },  // I: Allowance
+      ];
+
+      // Row heights
+      ws["!rows"] = [
+        { hpt: 22 },  // Row 1: Company name
+        { hpt: 14 },  // Row 2: Address
+        { hpt: 10 },  // Row 3: separator
+        { hpt: 18 },  // Row 4: Driver/Month
+        { hpt: 8 },   // Row 5: separator
+        { hpt: 20 },  // Row 6: headers
+      ];
+
+      // Merge cells
+      ws["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },  // A1:E1 company name
+        { s: { r: 0, c: 5 }, e: { r: 0, c: 8 } },  // F1:I1 payslip title (right side)
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } },  // A2:I2 address
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 4 } },  // A4:E4 driver name
+        { s: { r: 3, c: 5 }, e: { r: 3, c: 8 } },  // F4:I4 month
+      ];
+
+      // Apply styles
+      // Row 1: Company name
+      const cellA1 = ws["A1"];
+      if (cellA1) cellA1.s = { font: companyFont, alignment: { vertical: "center" } };
+      // Payslip title - it's in column F after merge but we set on I1 originally
+      // Actually with merge F1:I1, the content should be on F1
+      ws["F1"] = { v: "DRIVER PAYSLIP", t: "s", s: { font: payslipFont, alignment: { horizontal: "right", vertical: "center" } } };
+      // Remove I1 since we moved content to F1 for the merge
+      delete ws["I1"];
+
+      // Row 2: Address
+      const cellA2 = ws["A2"];
+      if (cellA2) cellA2.s = { font: addressFont, alignment: { vertical: "center" } };
+
+      // Row 4: Driver + Month
+      const cellA4 = ws["A4"];
+      if (cellA4) cellA4.s = { font: infoFont, alignment: { vertical: "center" } };
+      ws["F4"] = { v: `Month: ${monthLabel}`, t: "s", s: { font: infoFont, alignment: { horizontal: "right", vertical: "center" } } };
+      delete ws["I4"];
+
+      // Row 6: Headers (row index 5)
+      const headerCols = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+      for (const col of headerCols) {
+        const ref = `${col}6`;
+        if (ws[ref]) {
+          ws[ref].s = {
+            font: headerFont,
+            fill: headerFill,
+            border: borderHeader,
+            alignment: { horizontal: col >= "F" ? "right" : "left", vertical: "center", wrapText: true },
+          };
+        }
+      }
+
+      // Data rows styling
+      for (let r = 0; r < dw.orders.length; r++) {
+        const rowNum = 7 + r;
+        const isEven = r % 2 === 0;
+        const rowFill = isEven ? { fgColor: { rgb: "f7fafc" } } : undefined;
+
+        for (let c = 0; c < 9; c++) {
+          const col = headerCols[c];
+          const ref = `${col}${rowNum}`;
+          if (!ws[ref]) ws[ref] = { v: "", t: "s" };
+          const cell = ws[ref];
+
+          const baseStyle: Record<string, unknown> = {
+            font: c <= 4 ? fontSmall : fontDefault,
+            border: borderAll,
+            alignment: { vertical: "center", horizontal: c >= 5 ? "right" : "left" },
+          };
+          if (rowFill) baseStyle.fill = rowFill;
+
+          // Number formatting
+          if (c === 5 && cell.v) { cell.t = "n"; baseStyle.numFmt = numFmtQty; }
+          if ((c === 6 || c === 7 || c === 8) && cell.v) { cell.t = "n"; baseStyle.numFmt = numFmt2dp; }
+
+          cell.s = baseStyle;
+        }
+      }
+
+      // Total row styling
+      const totalRowNum = lastDataRow + 1;
+      for (let c = 0; c < 9; c++) {
+        const col = headerCols[c];
+        const ref = `${col}${totalRowNum}`;
+        if (!ws[ref]) ws[ref] = { v: "", t: "s" };
+        ws[ref].s = {
+          font: totalFont,
+          fill: totalFill,
+          border: borderTotal,
+          alignment: { horizontal: c >= 5 ? "right" : "left", vertical: "center" },
+          ...(c >= 6 ? { numFmt: numFmt2dp } : {}),
+        };
+      }
+
+      // Grand total row styling
+      const grandRowNum = totalRowNum + 1;
+      for (let c = 0; c < 9; c++) {
+        const col = headerCols[c];
+        const ref = `${col}${grandRowNum}`;
+        if (!ws[ref]) ws[ref] = { v: "", t: "s" };
+        ws[ref].s = {
+          font: { name: "Arial", sz: 11, bold: true, color: { rgb: "1a1a2e" } },
+          border: { top: { style: "medium", color: { rgb: "2d3748" } }, bottom: { style: "double", color: { rgb: "2d3748" } } },
+          alignment: { horizontal: c >= 5 ? "right" : "left", vertical: "center" },
+          ...(c === 8 ? { numFmt: numFmt2dp } : {}),
+        };
+      }
+
+      // Print setup: A4 portrait
+      ws["!print"] = { orientation: "portrait", paperSize: 9 }; // 9 = A4
+      ws["!margins"] = { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 };
+
+      const safeName = dw.driver_name.replace(/[\\/*?[\]:]/g, "").slice(0, 31);
+      XLSX.utils.book_append_sheet(wb, ws, safeName);
+    }
+
+    XLSX.writeFile(wb, `Wages-${month}.xlsx`);
   }
 
   async function handleSendWhatsApp() {
@@ -175,7 +371,7 @@ export default function WagesReportPage() {
       <div className="flex items-center gap-3 flex-wrap">
         <Select value={month} onValueChange={(v) => v && setMonth(v)}>
           <SelectTrigger className="w-[200px]">
-            <SelectValue />
+            <SelectValue>{monthOptions.find((o) => o.value === month)?.label ?? month}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {monthOptions.map((o) => (

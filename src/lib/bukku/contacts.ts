@@ -209,24 +209,47 @@ export async function syncBukkuContacts(): Promise<SyncResult> {
     }
   }
 
-  // Execute creates in batches of 50
+  // Execute creates using upsert to handle duplicates gracefully
+  // (contacts created in a previous sync already have bukku_contact_id set)
+  let actualCreated = 0;
   for (let i = 0; i < createBatch.length; i += BATCH_SIZE) {
     const chunk = createBatch.slice(i, i + BATCH_SIZE);
+    // Use upsert with bukku_contact_id conflict resolution
     const { data: newCustomers, error } = await supabase
       .from("customers")
-      .insert(chunk)
+      .upsert(chunk, { onConflict: "bukku_contact_id", ignoreDuplicates: false })
       .select("id, name");
 
     if (error) {
-      result.failed += chunk.length;
-      result.errors.push(`Batch create: ${error.message}`);
+      // Batch failed — fall back to individual upserts
+      for (const record of chunk) {
+        const { data: single, error: singleErr } = await supabase
+          .from("customers")
+          .upsert(record, { onConflict: "bukku_contact_id", ignoreDuplicates: false })
+          .select("id, name")
+          .single();
+
+        if (singleErr) {
+          result.failed++;
+          if (result.errors.length < 5) {
+            result.errors.push(`Create "${(record as { name?: string }).name}": ${singleErr.message}`);
+          }
+        } else if (single) {
+          actualCreated++;
+          const bukkuId = newContactBukkuIds.get(single.name);
+          if (bukkuId) customerBukkuIds.set(single.id, bukkuId);
+        }
+      }
     } else {
+      actualCreated += (newCustomers ?? []).length;
       for (const nc of newCustomers ?? []) {
         const bukkuId = newContactBukkuIds.get(nc.name);
         if (bukkuId) customerBukkuIds.set(nc.id, bukkuId);
       }
     }
   }
+  // Fix created count to reflect actual success
+  result.created = actualCreated;
 
   // Now fetch addresses for all customers from individual contact endpoints
   // Delete all existing bukku-sourced addresses first (replace on each sync)

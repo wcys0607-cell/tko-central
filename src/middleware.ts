@@ -9,8 +9,8 @@ const SKIP_ROUTES = ["/api/", "/_next/", "/favicon"];
 
 // Cookie name for cached role — avoids querying `drivers` on every navigation
 const ROLE_COOKIE = "tko-role";
-// How long to cache role (seconds) — re-check every 5 minutes
-const ROLE_CACHE_TTL = 300;
+// How long to cache role (seconds) — re-check every 1 minute
+const ROLE_CACHE_TTL = 60;
 
 export async function middleware(request: NextRequest) {
   const { supabase, user, response } = await updateSession(request);
@@ -24,14 +24,7 @@ export async function middleware(request: NextRequest) {
   // Public routes — allow through
   if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
     if (user) {
-      // Try cached role first
-      const cachedRole = request.cookies.get(ROLE_COOKIE)?.value;
-      if (cachedRole) {
-        return NextResponse.redirect(
-          new URL(getRoleRedirectPath(cachedRole as UserRole), request.url)
-        );
-      }
-
+      // Always check DB on login page to avoid stale role cookie from a different user
       const { data: driver } = await supabase
         .from("drivers")
         .select("role, is_active")

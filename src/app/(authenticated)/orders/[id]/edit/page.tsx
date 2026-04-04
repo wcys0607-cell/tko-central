@@ -20,6 +20,10 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
       .eq("id", id)
       .single()
       .then(({ data }: { data: Order | null }) => {
+        if (data?.stock_sync_status === "synced") {
+          router.replace(`/orders/${id}`);
+          return;
+        }
         setOrder(data);
         setLoading(false);
       });

@@ -332,7 +332,7 @@ export function NotificationRecipientsTab() {
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>{{ all: "All document types", custom: "Specific types only" }[formLogic] ?? formLogic}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all" label="All document types">

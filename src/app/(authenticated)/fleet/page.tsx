@@ -28,6 +28,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 const VEHICLE_TYPES = [
   "Road Tanker",
   "Mini Tanker",
+  "Small Tanker",
   "Trailer",
   "Car",
   "Excavator",
@@ -36,18 +37,20 @@ const VEHICLE_TYPES = [
 
 const DOC_TYPES = ["Road Tax", "Insurance", "Puspakom", "APAD", "Calibration"];
 
-// Group order: 1=Road Tanker/Mini Tanker/Trailer, 2=Car/Excavator, 3=Others
+// Group order: 1=Road Tanker/Mini Tanker/Trailer, 2=Small Tanker, 3=Car/Excavator, 4=Others
 function getGroupOrder(type: string | null): number {
-  if (!type) return 3;
+  if (!type) return 4;
   if (["Road Tanker", "Mini Tanker", "Trailer"].includes(type)) return 1;
-  if (["Car", "Excavator"].includes(type)) return 2;
-  return 3;
+  if (["Small Tanker"].includes(type)) return 2;
+  if (["Car", "Excavator"].includes(type)) return 3;
+  return 4;
 }
 
 function getGroupLabel(type: string | null): string {
   const order = getGroupOrder(type);
   if (order === 1) return "Tanker & Trailer";
-  if (order === 2) return "Car";
+  if (order === 2) return "Small Tanker";
+  if (order === 3) return "Car";
   return "Others";
 }
 

@@ -351,7 +351,7 @@ export function BukkuConnectionTab() {
               <span className="text-sm text-muted-foreground whitespace-nowrap">Delete PDFs older than</span>
               <Select value={cleanupDays} onValueChange={(v) => v && setCleanupDays(v)}>
                 <SelectTrigger className="w-[100px] h-8 text-sm">
-                  <SelectValue />
+                  <SelectValue>{{ "30": "30 days", "60": "60 days", "90": "90 days", "180": "180 days", "365": "1 year" }[cleanupDays] ?? cleanupDays}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="30" label="30 days">30 days</SelectItem>

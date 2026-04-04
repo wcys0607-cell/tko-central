@@ -413,7 +413,7 @@ export function UserManagementTab() {
                 onValueChange={(v) => v && setForm({ ...form, role: v })}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>{{ admin: "Admin", manager: "Manager", office: "Office", driver: "Driver", guest: "Guest" }[form.role] ?? form.role}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin" label="Admin">Admin</SelectItem>

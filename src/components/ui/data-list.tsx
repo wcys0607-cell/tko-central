@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
+import { useCallback, useRef } from "react";
 
 export interface DataColumn<T> {
   key: string;
@@ -25,6 +26,8 @@ export interface DataColumn<T> {
   mobileSecondary?: boolean;
   /** Extra class to hide column at certain breakpoints, e.g. "hidden lg:table-cell" */
   hideClass?: string;
+  /** If true, column cannot be resized */
+  noResize?: boolean;
 }
 
 interface DataListProps<T> {
@@ -38,6 +41,10 @@ interface DataListProps<T> {
   tableClassName?: string;
   /** Force table layout even on mobile */
   alwaysTable?: boolean;
+  /** Column widths (key -> px). Used for resizable columns. */
+  columnWidths?: Record<string, number>;
+  /** Called when a column is resized by dragging */
+  onColumnResize?: (key: string, width: number) => void;
 }
 
 export function DataList<T>({
@@ -50,8 +57,42 @@ export function DataList<T>({
   loadingRows = 6,
   tableClassName = "",
   alwaysTable = false,
+  columnWidths,
+  onColumnResize,
 }: DataListProps<T>) {
   const isMobile = useIsMobile();
+
+  // Resize handler (hooks must be called before any returns)
+  const resizingRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
+
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent, colKey: string, currentWidth: number) => {
+      e.preventDefault();
+      e.stopPropagation();
+      resizingRef.current = { key: colKey, startX: e.clientX, startW: currentWidth };
+
+      const onMouseMove = (ev: MouseEvent) => {
+        if (!resizingRef.current) return;
+        const diff = ev.clientX - resizingRef.current.startX;
+        const newWidth = Math.max(50, resizingRef.current.startW + diff);
+        onColumnResize?.(resizingRef.current.key, newWidth);
+      };
+
+      const onMouseUp = () => {
+        resizingRef.current = null;
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    },
+    [onColumnResize]
+  );
 
   if (loading) {
     return (
@@ -135,14 +176,41 @@ export function DataList<T>({
   }
 
   // Desktop: Table layout
+  const hasResizing = !!onColumnResize;
+
   return (
     <div className="border rounded-lg overflow-hidden">
-      <Table className={`w-full ${tableClassName}`}>
+      <Table className={`${hasResizing ? "table-fixed" : "w-full"} ${tableClassName}`}>
+        {hasResizing && (
+          <colgroup>
+            {columns.map((col) => {
+              const w = columnWidths?.[col.key];
+              return <col key={col.key} style={w ? { width: w } : undefined} />;
+            })}
+          </colgroup>
+        )}
         <TableHeader>
           <TableRow className="bg-muted/50">
             {columns.map((col) => (
-              <TableHead key={col.key} className={`${col.className ?? ""} ${col.hideClass ?? ""}`}>
-                {col.label}
+              <TableHead
+                key={col.key}
+                className={`${col.className ?? ""} ${col.hideClass ?? ""} ${hasResizing ? "relative overflow-hidden" : ""}`}
+                style={columnWidths?.[col.key] ? { width: columnWidths[col.key] } : undefined}
+              >
+                <span className="truncate">{col.label}</span>
+                {hasResizing && !col.noResize && col.label && (
+                  <span
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50"
+                    onMouseDown={(e) =>
+                      handleResizeStart(
+                        e,
+                        col.key,
+                        columnWidths?.[col.key] ??
+                          (e.currentTarget.parentElement?.offsetWidth ?? 100)
+                      )
+                    }
+                  />
+                )}
               </TableHead>
             ))}
           </TableRow>
@@ -155,7 +223,10 @@ export function DataList<T>({
               onClick={() => onRowClick?.(item)}
             >
               {columns.map((col) => (
-                <TableCell key={col.key} className={`${col.className ?? ""} ${col.hideClass ?? ""}`}>
+                <TableCell
+                  key={col.key}
+                  className={`${col.className ?? ""} ${col.hideClass ?? ""} ${hasResizing ? "overflow-hidden text-ellipsis" : ""}`}
+                >
                   {col.render(item)}
                 </TableCell>
               ))}

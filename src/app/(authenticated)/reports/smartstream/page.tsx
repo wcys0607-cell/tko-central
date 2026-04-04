@@ -160,7 +160,7 @@ export default function SmartStreamReportPage() {
       <div className="flex items-center gap-3 flex-wrap">
         <Select value={month} onValueChange={(v) => v && setMonth(v)}>
           <SelectTrigger className="w-[200px]">
-            <SelectValue />
+            <SelectValue>{monthOptions.find((o) => o.value === month)?.label ?? month}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {monthOptions.map((o) => (

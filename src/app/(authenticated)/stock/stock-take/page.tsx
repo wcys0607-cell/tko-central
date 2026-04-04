@@ -12,7 +12,10 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/components/providers/auth-provider";
+import { sortStockLocations } from "@/lib/stock-sort";
 
 interface SessionRow {
   id: string;
@@ -47,6 +50,10 @@ function sortByLocationOrder(
   const oa = TYPE_ORDER[a.locationType] ?? 5;
   const ob = TYPE_ORDER[b.locationType] ?? 5;
   if (oa !== ob) return oa - ob;
+  const aIsEuro = a.locationCode.toLowerCase().includes("euro");
+  const bIsEuro = b.locationCode.toLowerCase().includes("euro");
+  if (aIsEuro && !bIsEuro) return 1;
+  if (!aIsEuro && bIsEuro) return -1;
   return a.locationCode.localeCompare(b.locationCode);
 }
 
@@ -59,6 +66,7 @@ function varianceColor(pct: number): string {
 
 export default function StockTakePage() {
   const supabase = useMemo(() => createClient(), []);
+  const { role } = useAuth();
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +82,11 @@ export default function StockTakePage() {
         const oa = TYPE_ORDER[a.type ?? "tank"] ?? 5;
         const ob = TYPE_ORDER[b.type ?? "tank"] ?? 5;
         if (oa !== ob) return oa - ob;
+        // Euro tanks go last within their type group
+        const aIsEuro = (a.code ?? "").toLowerCase().includes("euro");
+        const bIsEuro = (b.code ?? "").toLowerCase().includes("euro");
+        if (aIsEuro && !bIsEuro) return 1;
+        if (!aIsEuro && bIsEuro) return -1;
         return (a.code ?? "").localeCompare(b.code ?? "");
       }),
     [locations]
@@ -92,7 +105,7 @@ export default function StockTakePage() {
         .limit(100),
     ]);
 
-    if (locRes.data) setLocations(locRes.data);
+    if (locRes.data) setLocations(sortStockLocations(locRes.data as StockLocation[]));
 
     if (sessionRes.data && sessionRes.data.length > 0) {
       const sessionIds = sessionRes.data.map(
@@ -165,6 +178,16 @@ export default function StockTakePage() {
       setDetailEntries(entries);
     }
     setDetailLoading(false);
+  }
+
+  async function deleteSession(sessionId: string) {
+    if (!confirm("Delete this stock take? This cannot be undone.")) return;
+    // Delete child stock_takes first, then the session
+    await supabase.from("stock_takes").delete().eq("session_id", sessionId);
+    await supabase.from("stock_take_sessions").delete().eq("id", sessionId);
+    setSelectedSession(null);
+    toast.success("Stock take deleted");
+    load();
   }
 
   if (loading) {
@@ -309,14 +332,26 @@ export default function StockTakePage() {
           {selectedSession && (
             <>
               <DialogHeader>
-                <DialogTitle>
-                  Stock Take —{" "}
-                  {new Date(selectedSession.date).toLocaleDateString("en-MY", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                  })}
-                </DialogTitle>
+                <div className="flex items-center justify-between">
+                  <DialogTitle>
+                    Stock Take —{" "}
+                    {new Date(selectedSession.date).toLocaleDateString("en-MY", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })}
+                  </DialogTitle>
+                  {(role === "admin" || role === "manager") && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      onClick={() => deleteSession(selectedSession.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </DialogHeader>
 
               <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-2">

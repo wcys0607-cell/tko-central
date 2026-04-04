@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdmin } from "@supabase/supabase-js";
+import { getAuthenticatedUser } from "@/lib/api-auth";
 
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { user, error, status } = await getAuthenticatedUser(["admin", "manager", "office"]);
+  if (!user) return NextResponse.json({ error }, { status: status ?? 401 });
 
   const orderId = req.nextUrl.searchParams.get("orderId");
   if (!orderId) return NextResponse.json({ error: "orderId required" }, { status: 400 });
@@ -29,11 +28,11 @@ export async function GET(req: NextRequest) {
   const fileName = `so/${orderId}/${order.bukku_so_number || order.bukku_so_id}.pdf`;
 
   // Try to get from storage
-  const { data: fileData, error } = await admin.storage
+  const { data: fileData, error: dlError } = await admin.storage
     .from("bukku-docs")
     .download(fileName);
 
-  if (error || !fileData) {
+  if (dlError || !fileData) {
     return NextResponse.json({ error: "PDF not found" }, { status: 404 });
   }
 
