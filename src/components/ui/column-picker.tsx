@@ -34,13 +34,11 @@ export function ColumnPicker({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={(props) => (
-          <Button variant="outline" size="sm" className="gap-1.5 h-9" {...props}>
-            <Settings2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Columns</span>
-          </Button>
-        )}
-      />
+        render={<Button variant="outline" size="sm" className="gap-1.5 h-9" />}
+      >
+        <Settings2 className="h-4 w-4" />
+        <span className="hidden sm:inline">Columns</span>
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
         <DropdownMenuSeparator />
