@@ -96,11 +96,11 @@ export default function OrdersPage() {
 
   // Column picker preferences
   const ALL_COLUMN_KEYS = useMemo(
-    () => ["customer", "load_from", "destination", "qty", "total", "driver", "truck", "status", "actions"],
+    () => ["customer", "destination", "qty", "remark", "delivery_remark", "truck", "driver", "load_from", "status", "actions"],
     []
   );
   const DEFAULT_VISIBLE = useMemo(
-    () => ["customer", "load_from", "destination", "qty", "total", "driver", "truck", "status", "actions"],
+    () => ["customer", "destination", "qty", "remark", "delivery_remark", "truck", "driver", "load_from", "status", "actions"],
     []
   );
   const {
@@ -158,7 +158,7 @@ export default function OrdersPage() {
     let query = supabase
       .from("orders")
       .select(
-        `id, order_date, customer_id, destination, product_id, quantity_liters, unit_price, total_sale, dn_number, invoice_number, status, bukku_sync_status, stock_sync_status, driver_id, vehicle_id, load_from, delivery_remark, items:order_items(product_id, quantity_liters), customer:customer_id(id, name, short_name)`,
+        `id, order_date, customer_id, destination, product_id, quantity_liters, unit_price, total_sale, dn_number, invoice_number, status, bukku_sync_status, stock_sync_status, driver_id, vehicle_id, load_from, remark, delivery_remark, items:order_items(product_id, quantity_liters), customer:customer_id(id, name, short_name)`,
         { count: "exact" }
       )
       .order("order_date", { ascending: false })
@@ -378,7 +378,7 @@ export default function OrdersPage() {
     setPage(0);
   };
 
-  // Column definitions (date is shown in group headers, not as a column)
+  // Column definitions — order: Customer, Destination, Quantity, Remark, Remark for Driver, Truck No, Driver, Load From, Status, Actions
   interface ColDef {
     key: string;
     label: string;
@@ -402,41 +402,16 @@ export default function OrdersPage() {
       },
     },
     {
-      key: "load_from",
-      label: "Load From",
-      className: "whitespace-nowrap",
-      hideClass: "hidden lg:table-cell",
-      render: (o) => {
-        if (canInlineEdit && o.stock_sync_status !== "synced") {
-          return (
-            <div onClick={(e) => e.stopPropagation()}>
-              <Select value={o.load_from ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "load_from", v || null); }}>
-                <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs">
-                  <SelectValue placeholder="—" />
-                </SelectTrigger>
-                <SelectContent>
-                  {LOAD_FROM_OPTIONS.map((opt) => (
-                    <SelectItem key={opt} value={opt} label={opt}>{opt}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          );
-        }
-        return <span className="text-sm">{o.load_from ?? "—"}</span>;
-      },
-    },
-    {
       key: "destination",
       label: "Destination",
       className: "max-w-[180px]",
       render: (o) => (
-        <span className="block truncate text-sm" title={o.destination ?? ""}>{(!o.destination || o.destination === "_custom") ? "—" : o.destination}</span>
+        <span className="block truncate" title={o.destination ?? ""}>{(!o.destination || o.destination === "_custom") ? "—" : o.destination}</span>
       ),
     },
     {
       key: "qty",
-      label: "Qty (L)",
+      label: "Quantity",
       className: "text-right whitespace-nowrap",
       render: (o) => {
         const items = (o.items ?? []) as unknown as { product_id: string | null; quantity_liters: number | null }[];
@@ -444,59 +419,38 @@ export default function OrdersPage() {
         const dieselItem = items.find((i) => getName(i.product_id).includes("DIESEL"));
         const ltItem = items.find((i) => getName(i.product_id).includes("(LT)"));
         const qty = dieselItem?.quantity_liters ?? ltItem?.quantity_liters ?? o.quantity_liters;
-        return (
-          <span className="font-mono text-sm">
-            {qty?.toLocaleString() ?? "—"}
-          </span>
-        );
+        return qty ? qty.toLocaleString() + " L" : "—";
       },
     },
     {
-      key: "total",
-      label: "Total",
-      className: "text-right whitespace-nowrap",
+      key: "remark",
+      label: "Remark",
+      className: "max-w-[150px]",
       hideClass: "hidden lg:table-cell",
-      render: (o) =>
-        o.total_sale
-          ? `RM ${o.total_sale.toLocaleString("en-MY", { minimumFractionDigits: 2 })}`
-          : "—",
+      render: (o) => (
+        <span className="block truncate" title={o.remark ?? ""}>{o.remark || "—"}</span>
+      ),
     },
     {
-      key: "driver",
-      label: "Driver",
-      className: "whitespace-nowrap",
+      key: "delivery_remark",
+      label: "Remark for Driver",
+      className: "max-w-[150px]",
       hideClass: "hidden lg:table-cell",
-      render: (o) => {
-        if (canInlineEdit && o.stock_sync_status !== "synced") {
-          return (
-            <div onClick={(e) => e.stopPropagation()}>
-              <Select value={o.driver_id ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "driver_id", v || null); }}>
-                <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs">
-                  <SelectValue>{o.driver_id ? driverMap[o.driver_id] ?? "—" : "—"}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {driverList.map((d) => (
-                    <SelectItem key={d.id} value={d.id} label={d.name}>{d.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          );
-        }
-        return <span className="text-sm">{o.driver_id ? driverMap[o.driver_id] ?? "—" : "—"}</span>;
-      },
+      render: (o) => (
+        <span className="block truncate" title={o.delivery_remark ?? ""}>{o.delivery_remark || "—"}</span>
+      ),
     },
     {
       key: "truck",
-      label: "Truck",
+      label: "Truck No",
       className: "whitespace-nowrap",
-      hideClass: "hidden xl:table-cell",
+      hideClass: "hidden lg:table-cell",
       render: (o) => {
         if (canInlineEdit && o.stock_sync_status !== "synced") {
           return (
             <div onClick={(e) => e.stopPropagation()}>
               <Select value={o.vehicle_id ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "vehicle_id", v || null); }}>
-                <SelectTrigger className="h-7 w-auto min-w-[90px] text-xs">
+                <SelectTrigger className="h-6 w-auto min-w-[80px] text-xs">
                   <SelectValue>{o.vehicle_id ? vehicleMap[o.vehicle_id] ?? "—" : "—"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -508,7 +462,57 @@ export default function OrdersPage() {
             </div>
           );
         }
-        return <span className="text-sm">{o.vehicle_id ? vehicleMap[o.vehicle_id] ?? "—" : "—"}</span>;
+        return o.vehicle_id ? vehicleMap[o.vehicle_id] ?? "—" : "—";
+      },
+    },
+    {
+      key: "driver",
+      label: "Driver",
+      className: "whitespace-nowrap",
+      hideClass: "hidden lg:table-cell",
+      render: (o) => {
+        if (canInlineEdit && o.stock_sync_status !== "synced") {
+          return (
+            <div onClick={(e) => e.stopPropagation()}>
+              <Select value={o.driver_id ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "driver_id", v || null); }}>
+                <SelectTrigger className="h-6 w-auto min-w-[90px] text-xs">
+                  <SelectValue>{o.driver_id ? driverMap[o.driver_id] ?? "—" : "—"}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {driverList.map((d) => (
+                    <SelectItem key={d.id} value={d.id} label={d.name}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        }
+        return o.driver_id ? driverMap[o.driver_id] ?? "—" : "—";
+      },
+    },
+    {
+      key: "load_from",
+      label: "Load From",
+      className: "whitespace-nowrap",
+      hideClass: "hidden lg:table-cell",
+      render: (o) => {
+        if (canInlineEdit && o.stock_sync_status !== "synced") {
+          return (
+            <div onClick={(e) => e.stopPropagation()}>
+              <Select value={o.load_from ?? ""} onValueChange={(v) => { inlineUpdate(o.id, "load_from", v || null); }}>
+                <SelectTrigger className="h-6 w-auto min-w-[90px] text-xs">
+                  <SelectValue placeholder="—" />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOAD_FROM_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt} label={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        }
+        return o.load_from ?? "—";
       },
     },
     {
@@ -520,8 +524,8 @@ export default function OrdersPage() {
           return (
             <Button
               variant="outline"
-              size="sm"
-              className="h-6 text-xs border-status-approved-fg/30 text-status-approved-fg"
+              size="xs"
+              className="h-5 text-[10px] border-status-approved-fg/30 text-status-approved-fg"
               disabled={actionLoading === o.id}
               onClick={(e) => { e.stopPropagation(); handleAcknowledge(o.id); }}
             >
@@ -533,8 +537,8 @@ export default function OrdersPage() {
           return (
             <Button
               variant="outline"
-              size="sm"
-              className="h-6 text-xs border-status-delivered-fg/30 text-status-delivered-fg"
+              size="xs"
+              className="h-5 text-[10px] border-status-delivered-fg/30 text-status-delivered-fg"
               disabled={actionLoading === o.id}
               onClick={(e) => { e.stopPropagation(); handleDeliver(o.id); }}
             >
@@ -548,23 +552,23 @@ export default function OrdersPage() {
     {
       key: "actions",
       label: "",
-      className: "text-center whitespace-nowrap w-[40px]",
+      className: "text-center whitespace-nowrap w-[32px]",
       hideClass: "hidden lg:table-cell",
       render: (o) => {
         if (!canSendToDriver || !o.driver_id) return null;
         const wasSent = sentOrders.has(o.id);
         return (
           <div className="flex items-center gap-0.5 justify-center">
-            {wasSent && <Check className="h-3 w-3 text-green-600" />}
+            {wasSent && <Check className="h-2.5 w-2.5 text-green-600" />}
             <Button
               variant="ghost"
               size="icon"
-              className={`h-7 w-7 ${wasSent ? "text-green-600" : ""}`}
+              className={`h-5 w-5 ${wasSent ? "text-green-600" : ""}`}
               title={wasSent ? "Sent — click to resend" : "Send to Driver"}
               disabled={actionLoading === o.id}
               onClick={(e) => { e.stopPropagation(); handleNotifyDriver(o.id); }}
             >
-              <Send className="h-3.5 w-3.5" />
+              <Send className="h-3 w-3" />
             </Button>
           </div>
         );
