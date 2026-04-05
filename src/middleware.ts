@@ -5,7 +5,7 @@ import { ROUTE_ACCESS, getRoleRedirectPath, type UserRole } from "@/lib/auth";
 // Routes that don't require auth
 const PUBLIC_ROUTES = ["/login"];
 // Routes handled by Next.js / API — skip role check
-const SKIP_ROUTES = ["/api/", "/_next/", "/favicon"];
+const SKIP_ROUTES = ["/api/", "/_next/", "/favicon", "/sw.js", "/manifest.json"];
 
 // Cookie name for cached role — avoids querying `drivers` on every navigation
 const ROLE_COOKIE = "tko-role";
@@ -116,6 +116,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|logo.jpeg|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|logo.jpeg|sw\\.js|manifest\\.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
