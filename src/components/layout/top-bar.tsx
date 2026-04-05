@@ -32,7 +32,7 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (pathname === path || pathname.startsWith(path + "/")) return title;
   }
-  return "TKO Central";
+  return "TKO Hub";
 }
 
 export function TopBar() {

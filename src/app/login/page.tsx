@@ -82,7 +82,7 @@ export default function LoginPage() {
           </div>
           <div>
             <CardTitle className="text-2xl font-bold text-primary">
-              TKO Central
+              TKO Hub
             </CardTitle>
             <CardDescription>
               Top Kim Oil Sdn. Bhd.

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TKO Central",
+  title: "TKO Hub",
   description: "Top Kim Oil Operations Management System",
   icons: {
     icon: "/logo.png",
