@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { TopBar } from "@/components/layout/top-bar";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { Toaster } from "sonner";
+import { InstallBanner } from "@/components/pwa/install-banner";
 
 export default function AuthenticatedLayout({
   children,
@@ -31,6 +32,7 @@ export default function AuthenticatedLayout({
             </div>
             {/* Bottom nav: visible on mobile only */}
             <MobileBottomNav />
+            <InstallBanner />
           </SidebarProvider>
         </TooltipProvider>
         <Toaster
