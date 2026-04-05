@@ -8,15 +8,15 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const DISMISS_KEY = "tko-pwa-dismiss";
-const DISMISS_DAYS = 7;
 
 function isDismissed(): boolean {
   if (typeof window === "undefined") return true;
-  const raw = localStorage.getItem(DISMISS_KEY);
-  if (!raw) return false;
-  const ts = Number(raw);
-  if (isNaN(ts)) return false;
-  return Date.now() - ts < DISMISS_DAYS * 24 * 60 * 60 * 1000;
+  return localStorage.getItem(DISMISS_KEY) === "1";
+}
+
+function isMobileDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
 function isIOSSafari(): boolean {
@@ -44,8 +44,11 @@ export function usePWAInstall() {
     // Already installed as PWA — don't show anything
     if (isStandalone()) return;
 
-    // Already dismissed recently
+    // Already dismissed
     if (isDismissed()) return;
+
+    // Only show on mobile devices
+    if (!isMobileDevice()) return;
 
     // iOS Safari: show manual instructions
     if (isIOSSafari()) {
@@ -76,7 +79,7 @@ export function usePWAInstall() {
   }, [deferredPrompt]);
 
   const dismiss = useCallback(() => {
-    localStorage.setItem(DISMISS_KEY, String(Date.now()));
+    localStorage.setItem(DISMISS_KEY, "1");
     setShowBanner(false);
   }, []);
 
