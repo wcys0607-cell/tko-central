@@ -143,6 +143,7 @@ export default function DriverWagesPage() {
                     <th className="text-right p-2">Qty</th>
                     <th className="text-right p-2">Wages</th>
                     <th className="text-right p-2">Allow.</th>
+                    <th className="text-left p-2">Remark</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -169,6 +170,9 @@ export default function DriverWagesPage() {
                       <td className="p-2 text-right text-xs font-mono">
                         {((o.allowance_liters ?? 0) * (o.allowance_unit_price ?? 0) + (o.special_allowance ?? 0)) || "—"}
                       </td>
+                      <td className="p-2 text-xs max-w-[120px] truncate">
+                        {o.driver_remark || "—"}
+                      </td>
                     </tr>
                   ))}
                   <tr className="bg-muted font-bold">
@@ -178,6 +182,7 @@ export default function DriverWagesPage() {
                     </td>
                     <td className="p-2 text-right text-xs font-mono">{totalWages.toFixed(2)}</td>
                     <td className="p-2 text-right text-xs font-mono">{totalAllowance.toFixed(2)}</td>
+                    <td className="p-2"></td>
                   </tr>
                 </tbody>
               </table>

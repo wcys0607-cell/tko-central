@@ -43,3 +43,82 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(data);
 }
+
+/** Check if driver_remark is editable for a given order date */
+function isRemarkEditable(orderDate: string): boolean {
+  const now = new Date();
+  const oDate = new Date(orderDate + "T00:00:00");
+  const orderMonth = oDate.getMonth();
+  const orderYear = oDate.getFullYear();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  // Same month → always editable
+  if (orderYear === currentYear && orderMonth === currentMonth) return true;
+
+  // Previous month → check grace period
+  const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+  const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+  if (orderYear === prevYear && orderMonth === prevMonth) {
+    const lastDayOfOrderMonth = new Date(orderYear, orderMonth + 1, 0).getDate();
+    const orderDay = oDate.getDate();
+    // Last 2 days of the month, and today is still ≤ 2nd of current month
+    if (orderDay >= lastDayOfOrderMonth - 1 && now.getDate() <= 2) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export async function PATCH(req: NextRequest) {
+  const { user, error, status } = await getAuthenticatedUser();
+  if (!user) {
+    return NextResponse.json({ error }, { status: status ?? 401 });
+  }
+
+  const body = await req.json();
+  const { order_id, driver_remark } = body as { order_id?: string; driver_remark?: string };
+
+  if (!order_id) {
+    return NextResponse.json({ error: "Missing order_id" }, { status: 400 });
+  }
+
+  const supabase = createAdminClient();
+
+  // Fetch the order to verify ownership and check date
+  const { data: order, error: fetchErr } = await supabase
+    .from("orders")
+    .select("id, driver_id, order_date")
+    .eq("id", order_id)
+    .single();
+
+  if (fetchErr || !order) {
+    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
+
+  // Drivers can only update their own orders
+  if (user.role === "driver" && order.driver_id !== user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Check editable window
+  if (!isRemarkEditable(order.order_date)) {
+    return NextResponse.json({ error: "Editing period has ended for this order" }, { status: 403 });
+  }
+
+  // Update only driver_remark
+  const { data: updated, error: updateErr } = await supabase
+    .from("orders")
+    .update({ driver_remark: driver_remark ?? null })
+    .eq("id", order_id)
+    .select("id, driver_remark")
+    .single();
+
+  if (updateErr) {
+    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json(updated);
+}

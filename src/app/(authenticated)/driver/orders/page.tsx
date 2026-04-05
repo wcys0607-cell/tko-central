@@ -1,37 +1,35 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { Order } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Package } from "lucide-react";
-import { format, subDays, addDays, isToday, isTomorrow, isYesterday } from "date-fns";
+import { ArrowLeft, MapPin, Package, Lock, MessageSquare } from "lucide-react";
+import { format, addDays, isToday, isTomorrow, isYesterday } from "date-fns";
+import { toast } from "sonner";
 
-/** Get the 7-day window. After 7pm, extend to next day:
- *  Mon–Fri 7pm → tomorrow
- *  Sat 7pm → Monday
- *  Sun 7pm → Monday */
+/** Get date range: 1st of previous month → today/tomorrow (with weekend logic) */
 function getDateRange(): { from: string; to: string } {
   const now = new Date();
   const hour = now.getHours();
   const day = now.getDay(); // 0=Sun, 6=Sat
 
+  // "from" is always the 1st of the previous month
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const from = format(prevMonth, "yyyy-MM-dd");
+
   if (hour >= 19) {
     let daysAhead = 1; // Mon–Fri: tomorrow
     if (day === 6) daysAhead = 2;       // Sat → Mon
     else if (day === 0) daysAhead = 1;  // Sun → Mon
-
     const to = addDays(now, daysAhead);
-    const from = subDays(now, 7 - daysAhead);
-    return { from: format(from, "yyyy-MM-dd"), to: format(to, "yyyy-MM-dd") };
+    return { from, to: format(to, "yyyy-MM-dd") };
   } else {
-    // Before 7pm: today + previous 6 days
-    const to = now;
-    const from = subDays(now, 6);
-    return { from: format(from, "yyyy-MM-dd"), to: format(to, "yyyy-MM-dd") };
+    return { from, to: format(now, "yyyy-MM-dd") };
   }
 }
 
@@ -43,10 +41,40 @@ function dateLabel(dateStr: string): string {
   return format(d, "EEE, d MMM");
 }
 
+/** Check if driver_remark is editable for a given order date */
+function isRemarkEditable(orderDate: string): boolean {
+  const now = new Date();
+  const oDate = new Date(orderDate + "T00:00:00");
+  const orderMonth = oDate.getMonth();
+  const orderYear = oDate.getFullYear();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  // Same month → always editable
+  if (orderYear === currentYear && orderMonth === currentMonth) return true;
+
+  // Previous month → check grace period
+  const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+  const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+  if (orderYear === prevYear && orderMonth === prevMonth) {
+    const lastDayOfOrderMonth = new Date(orderYear, orderMonth + 1, 0).getDate();
+    const orderDay = oDate.getDate();
+    if (orderDay >= lastDayOfOrderMonth - 1 && now.getDate() <= 2) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export default function DriverOrdersPage() {
   const { driverProfile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [remarkDrafts, setRemarkDrafts] = useState<Record<string, string>>({});
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+  const originalRemarks = useRef<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!driverProfile?.id) return;
@@ -57,7 +85,18 @@ export default function DriverOrdersPage() {
     try {
       const res = await fetch(`/api/driver/orders?driver_id=${driverProfile.id}&from=${from}&to=${to}`);
       const data = await res.json();
-      if (Array.isArray(data)) setOrders(data);
+      if (Array.isArray(data)) {
+        setOrders(data);
+        // Initialize remark drafts
+        const drafts: Record<string, string> = {};
+        const originals: Record<string, string> = {};
+        for (const o of data) {
+          drafts[o.id] = o.driver_remark ?? "";
+          originals[o.id] = o.driver_remark ?? "";
+        }
+        setRemarkDrafts(drafts);
+        originalRemarks.current = originals;
+      }
     } catch {
       // ignore
     }
@@ -81,16 +120,50 @@ export default function DriverOrdersPage() {
     }
   }, [load]);
 
-  // Group orders by date
+  // Group orders by month
   const grouped = useMemo(() => {
     const map = new Map<string, Order[]>();
     for (const o of orders) {
-      const key = o.order_date;
+      const d = new Date(o.order_date + "T00:00:00");
+      const key = format(d, "yyyy-MM");
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(o);
     }
-    return Array.from(map.entries());
+    // Sort months descending (newest first)
+    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
   }, [orders]);
+
+  const saveRemark = useCallback(async (orderId: string) => {
+    const draft = remarkDrafts[orderId] ?? "";
+    const original = originalRemarks.current[orderId] ?? "";
+    if (draft === original) return; // No change
+
+    setSavingIds((prev) => new Set(prev).add(orderId));
+    try {
+      const res = await fetch("/api/driver/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order_id: orderId, driver_remark: draft || null }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.error || "Failed to save remark");
+        // Revert
+        setRemarkDrafts((prev) => ({ ...prev, [orderId]: original }));
+      } else {
+        originalRemarks.current[orderId] = draft;
+        toast.success("Remark saved");
+      }
+    } catch {
+      toast.error("Failed to save remark");
+      setRemarkDrafts((prev) => ({ ...prev, [orderId]: original }));
+    }
+    setSavingIds((prev) => {
+      const next = new Set(prev);
+      next.delete(orderId);
+      return next;
+    });
+  }, [remarkDrafts]);
 
   const { from, to } = getDateRange();
 
@@ -115,54 +188,83 @@ export default function DriverOrdersPage() {
       ) : orders.length === 0 ? (
         <p className="text-muted-foreground text-center py-8">No orders in this period</p>
       ) : (
-        <div className="space-y-4">
-          {grouped.map(([date, dayOrders]) => (
-            <div key={date}>
-              <div className="flex items-center gap-2 mb-2">
-                <h2 className="text-sm font-bold text-primary">{dateLabel(date)}</h2>
-                <Badge variant="secondary" className="text-[10px]">{dayOrders.length}</Badge>
-              </div>
-              <div className="space-y-2">
-                {dayOrders.map((o) => {
-                  const cust = o.customer as { name: string; short_name?: string | null } | null;
-                  const custName = cust?.short_name || cust?.name || "—";
-                  const items = (o.items ?? []) as unknown as { product_id: string; quantity_liters: number; product: { name: string } | null }[];
-                  const dieselItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("DIESEL"));
-                  const ltItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("(LT)"));
-                  const qty = dieselItem?.quantity_liters ?? ltItem?.quantity_liters ?? o.quantity_liters;
+        <div className="space-y-6">
+          {grouped.map(([monthKey, monthOrders]) => {
+            const monthDate = new Date(monthKey + "-01T00:00:00");
+            const monthLabel = format(monthDate, "MMMM yyyy");
 
-                  return (
-                    <Card key={o.id}>
-                      <CardContent className="py-3 px-4">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-sm truncate">{custName}</p>
-                            {o.destination && (
-                              <p className="text-xs text-muted-foreground flex items-start gap-1 mt-0.5">
-                                <MapPin className="w-3 h-3 mt-0.5 shrink-0" />
-                                <span className="line-clamp-2">{o.destination.split("\n")[0]}</span>
+            return (
+              <div key={monthKey}>
+                <div className="flex items-center gap-2 mb-3">
+                  <h2 className="text-sm font-bold text-primary">{monthLabel}</h2>
+                  <Badge variant="secondary" className="text-[10px]">{monthOrders.length}</Badge>
+                </div>
+                <div className="space-y-2">
+                  {monthOrders.map((o) => {
+                    const cust = o.customer as { name: string; short_name?: string | null } | null;
+                    const custName = cust?.short_name || cust?.name || "—";
+                    const items = (o.items ?? []) as unknown as { product_id: string; quantity_liters: number; product: { name: string } | null }[];
+                    const dieselItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("DIESEL"));
+                    const ltItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("(LT)"));
+                    const qty = dieselItem?.quantity_liters ?? ltItem?.quantity_liters ?? o.quantity_liters;
+                    const editable = isRemarkEditable(o.order_date);
+
+                    return (
+                      <Card key={o.id}>
+                        <CardContent className="py-3 px-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-sm truncate">{custName}</p>
+                                <span className="text-[10px] text-muted-foreground shrink-0">
+                                  {dateLabel(o.order_date)}
+                                </span>
+                              </div>
+                              {o.destination && (
+                                <p className="text-xs text-muted-foreground flex items-start gap-1 mt-0.5">
+                                  <MapPin className="w-3 h-3 mt-0.5 shrink-0" />
+                                  <span className="line-clamp-2">{o.destination.split("\n")[0]}</span>
+                                </p>
+                              )}
+                              {o.delivery_remark && (
+                                <p className="text-xs text-muted-foreground mt-0.5 italic">
+                                  {o.delivery_remark}
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-bold text-sm flex items-center gap-1 justify-end">
+                                <Package className="w-3 h-3" />
+                                {qty ? `${Number(qty).toLocaleString()}L` : "—"}
                               </p>
-                            )}
-                            {o.delivery_remark && (
-                              <p className="text-xs text-muted-foreground mt-0.5 italic">
-                                {o.delivery_remark}
-                              </p>
-                            )}
+                            </div>
                           </div>
-                          <div className="text-right shrink-0">
-                            <p className="font-bold text-sm flex items-center gap-1 justify-end">
-                              <Package className="w-3 h-3" />
-                              {qty ? `${Number(qty).toLocaleString()}L` : "—"}
-                            </p>
+                          {/* Driver remark input */}
+                          <div className="mt-2 flex items-center gap-1.5">
+                            {editable ? (
+                              <MessageSquare className="w-3 h-3 text-muted-foreground shrink-0" />
+                            ) : (
+                              <Lock className="w-3 h-3 text-muted-foreground shrink-0" />
+                            )}
+                            <Input
+                              placeholder={editable ? "Add your remark..." : ""}
+                              value={remarkDrafts[o.id] ?? ""}
+                              disabled={!editable || savingIds.has(o.id)}
+                              onChange={(e) =>
+                                setRemarkDrafts((prev) => ({ ...prev, [o.id]: e.target.value }))
+                              }
+                              onBlur={() => saveRemark(o.id)}
+                              className="h-7 text-xs"
+                            />
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

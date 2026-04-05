@@ -101,6 +101,7 @@ export interface Order {
   receipt_no: string | null;
   delivery_remark: string | null;
   remark: string | null;
+  driver_remark: string | null;
   bukku_so_id: number | null;
   bukku_so_number: string | null;
   bukku_do_id: number | null;
