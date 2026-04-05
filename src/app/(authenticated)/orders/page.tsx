@@ -31,7 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Search, Send, MessageSquare, Check } from "lucide-react";
+import { Plus, Search, Send, MessageSquare, Check, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
 import { ColumnPicker } from "@/components/ui/column-picker";
 import { useColumnPreferences } from "@/hooks/use-column-preferences";
 import { format, addDays, isToday, isTomorrow, isYesterday } from "date-fns";
@@ -114,9 +114,28 @@ export default function OrdersPage() {
     visibleColumns,
     toggleColumn,
     setColumnWidth,
+    reorderColumns,
     resetPreferences,
     prefs,
   } = useColumnPreferences("orders-table", ALL_COLUMN_KEYS, DEFAULT_VISIBLE);
+
+  // Sort state (click column header to sort within groups)
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function handleSort(key: string) {
+    if (sortKey === key) {
+      if (sortDir === "asc") setSortDir("desc");
+      else { setSortKey(null); setSortDir("asc"); } // third click resets
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  // Drag reorder state
+  const [dragCol, setDragCol] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
 
   // Lookup maps for names
   const [customerMap, setCustomerMap] = useState<Record<string, string>>({});
@@ -567,11 +586,12 @@ export default function OrdersPage() {
   ];
 
   // Filter columns based on visibility preferences
-  const filteredColumns = useMemo(
-    () => columns.filter((col) => visibleColumns.includes(col.key)),
+  // Filter and order columns based on user preferences
+  const filteredColumns = useMemo(() => {
+    const colMap = new Map(columns.map((c) => [c.key, c]));
+    return visibleColumns.map((k) => colMap.get(k)).filter(Boolean) as ColDef[];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [columns, visibleColumns]
-  );
+  }, [columns, visibleColumns]);
 
   // Column options for the picker (actions is locked/always visible)
   const columnPickerOptions = useMemo(
@@ -583,7 +603,41 @@ export default function OrdersPage() {
     [columns]
   );
 
-  // Group orders by date
+  // Sort value extractor for each column
+  const getSortValue = useCallback((o: Order, key: string): string | number => {
+    switch (key) {
+      case "customer": {
+        const cust = o.customer as { name: string; short_name?: string | null } | null;
+        return (cust?.short_name || cust?.name || customerMap[o.customer_id] || "").toLowerCase();
+      }
+      case "destination": return (o.destination || "").toLowerCase();
+      case "qty": {
+        const items = (o.items ?? []) as unknown as { product_id: string | null; quantity_liters: number | null }[];
+        const getName = (pid: string | null) => pid ? (productMap[pid] ?? "").toUpperCase() : "";
+        const d = items.find((i) => getName(i.product_id).includes("DIESEL"));
+        const l = items.find((i) => getName(i.product_id).includes("(LT)"));
+        return d?.quantity_liters ?? l?.quantity_liters ?? o.quantity_liters ?? 0;
+      }
+      case "remark": return (o.remark || "").toLowerCase();
+      case "delivery_remark": return (o.delivery_remark || "").toLowerCase();
+      case "truck": return (o.vehicle_id ? vehicleMap[o.vehicle_id] || "" : "").toLowerCase();
+      case "driver": return (o.driver_id ? driverMap[o.driver_id] || "" : "").toLowerCase();
+      case "load_from": return (o.load_from || "").toLowerCase();
+      case "status": return o.status;
+      case "total": return o.total_sale ?? 0;
+      case "transport": return o.transport ?? 0;
+      case "unit_price": return o.unit_price ?? 0;
+      case "dn_number": return (o.dn_number || "").toLowerCase();
+      case "invoice_number": return (o.invoice_number || "").toLowerCase();
+      case "order_type": return o.order_type || "";
+      case "agent_name": return (o.agent_name || "").toLowerCase();
+      case "wages": return o.wages ?? 0;
+      case "special_allowance": return o.special_allowance ?? 0;
+      default: return "";
+    }
+  }, [customerMap, productMap, driverMap, vehicleMap]);
+
+  // Group orders by date, sort within groups if sort is active
   const groupedOrders = useMemo(() => {
     const groups: { date: string; label: string; orders: Order[] }[] = [];
     let currentDate = "";
@@ -602,8 +656,19 @@ export default function OrdersPage() {
       }
       groups[groups.length - 1].orders.push(o);
     }
+    // Sort within each group if sort is active
+    if (sortKey) {
+      for (const g of groups) {
+        g.orders.sort((a, b) => {
+          const av = getSortValue(a, sortKey);
+          const bv = getSortValue(b, sortKey);
+          const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+          return sortDir === "asc" ? cmp : -cmp;
+        });
+      }
+    }
     return groups;
-  }, [orders]);
+  }, [orders, sortKey, sortDir, getSortValue]);
 
   return (
     <div className="p-3 md:p-4 space-y-3 animate-fade-in">
@@ -729,40 +794,74 @@ export default function OrdersPage() {
             <Table className="w-full">
               <TableHeader>
                 <TableRow className="bg-muted/50">
-                  {filteredColumns.map((col) => (
-                    <TableHead
-                      key={col.key}
-                      className={`h-6 px-1.5 text-[11px] relative ${col.className ?? ""} ${col.hideClass ?? ""}`}
-                      style={prefs.widths[col.key] ? { width: prefs.widths[col.key], minWidth: prefs.widths[col.key] } : undefined}
-                    >
-                      {col.label}
-                      {col.label && (
+                  {filteredColumns.map((col) => {
+                    const isSorted = sortKey === col.key;
+                    const sortable = !!col.label && col.key !== "actions";
+                    return (
+                      <TableHead
+                        key={col.key}
+                        className={`h-6 px-1.5 text-[11px] relative select-none ${col.className ?? ""} ${col.hideClass ?? ""} ${dragOverCol === col.key ? "bg-primary/10" : ""}`}
+                        style={prefs.widths[col.key] ? { width: prefs.widths[col.key], minWidth: prefs.widths[col.key] } : undefined}
+                        draggable={!!col.label}
+                        onDragStart={(e) => {
+                          setDragCol(col.key);
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", col.key);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (dragCol && dragCol !== col.key) setDragOverCol(col.key);
+                        }}
+                        onDragLeave={() => setDragOverCol(null)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (dragCol && dragCol !== col.key) reorderColumns(dragCol, col.key);
+                          setDragCol(null);
+                          setDragOverCol(null);
+                        }}
+                        onDragEnd={() => { setDragCol(null); setDragOverCol(null); }}
+                      >
                         <span
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            const startX = e.clientX;
-                            const startW = prefs.widths[col.key] ?? (e.currentTarget.parentElement?.offsetWidth ?? 80);
-                            const onMove = (ev: MouseEvent) => {
-                              const w = Math.max(40, startW + ev.clientX - startX);
-                              setColumnWidth(col.key, w);
-                            };
-                            const onUp = () => {
-                              document.removeEventListener("mousemove", onMove);
-                              document.removeEventListener("mouseup", onUp);
-                              document.body.style.cursor = "";
-                              document.body.style.userSelect = "";
-                            };
-                            document.body.style.cursor = "col-resize";
-                            document.body.style.userSelect = "none";
-                            document.addEventListener("mousemove", onMove);
-                            document.addEventListener("mouseup", onUp);
-                          }}
-                        />
-                      )}
-                    </TableHead>
-                  ))}
+                          className={`inline-flex items-center gap-0.5 ${sortable ? "cursor-pointer hover:text-foreground" : ""}`}
+                          onClick={sortable ? () => handleSort(col.key) : undefined}
+                        >
+                          {col.label}
+                          {sortable && (
+                            isSorted
+                              ? sortDir === "asc"
+                                ? <ArrowUp className="h-2.5 w-2.5 text-foreground" />
+                                : <ArrowDown className="h-2.5 w-2.5 text-foreground" />
+                              : <ChevronsUpDown className="h-2.5 w-2.5 opacity-30" />
+                          )}
+                        </span>
+                        {col.label && (
+                          <span
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const startX = e.clientX;
+                              const startW = prefs.widths[col.key] ?? (e.currentTarget.parentElement?.offsetWidth ?? 80);
+                              const onMove = (ev: MouseEvent) => {
+                                const w = Math.max(40, startW + ev.clientX - startX);
+                                setColumnWidth(col.key, w);
+                              };
+                              const onUp = () => {
+                                document.removeEventListener("mousemove", onMove);
+                                document.removeEventListener("mouseup", onUp);
+                                document.body.style.cursor = "";
+                                document.body.style.userSelect = "";
+                              };
+                              document.body.style.cursor = "col-resize";
+                              document.body.style.userSelect = "none";
+                              document.addEventListener("mousemove", onMove);
+                              document.addEventListener("mouseup", onUp);
+                            }}
+                          />
+                        )}
+                      </TableHead>
+                    );
+                  })}
                 </TableRow>
               </TableHeader>
               <TableBody>
