@@ -138,6 +138,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     loadLookups();
   }, [supabase]);
 
+  // Auto-calculate wages: product = qty × transport × 22%, service = qty × unit_price × 22%
+  function calcWages(ord: Order): number {
+    const productName = ((ord.product as { name?: string } | null)?.name ?? "").toUpperCase();
+    const isService = productName.startsWith("TRANSPORTATION");
+    const qty = ord.quantity_liters ?? 0;
+    const rate = isService ? (ord.unit_price ?? 0) : (ord.transport ?? 0);
+    return qty * rate * 0.22;
+  }
+
   // Inline update helper
   const NUMERIC_FIELDS = ["wages", "transport", "special_allowance", "allowance_liters", "allowance_unit_price"];
   async function inlineUpdate(field: string, value: string | null) {
@@ -146,7 +155,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     if (NUMERIC_FIELDS.includes(field)) {
       dbValue = value ? parseFloat(value) : null;
     }
-    const { error } = await supabase.from("orders").update({ [field]: dbValue }).eq("id", order.id);
+
+    // Auto-recalculate wages when transport changes (for products)
+    const updates: Record<string, unknown> = { [field]: dbValue };
+    if (field === "transport" && !order.wages_finalized_at) {
+      const productName = ((order.product as { name?: string } | null)?.name ?? "").toUpperCase();
+      if (!productName.startsWith("TRANSPORTATION")) {
+        const qty = order.quantity_liters ?? 0;
+        const newTransport = dbValue ? Number(dbValue) : 0;
+        updates.wages = qty * newTransport * 0.22;
+      }
+    }
+
+    const { error } = await supabase.from("orders").update(updates).eq("id", order.id);
     if (error) {
       toast.error("Failed to update");
     } else {
@@ -430,48 +451,35 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               )}
               {/* Wages section */}
               {(() => {
-                // Auto-calculate wages based on product type
+                const calculated = calcWages(order);
                 const productName = (product?.name ?? "").toUpperCase();
                 const isService = productName.startsWith("TRANSPORTATION");
                 const qty = order.quantity_liters ?? 0;
                 const rate = isService ? (order.unit_price ?? 0) : (order.transport ?? 0);
-                const calculatedWages = qty * rate * 0.22;
-                const currentWages = order.wages ?? 0;
-                const hasOverride = currentWages > 0 && Math.abs(currentWages - calculatedWages) > 0.01;
 
                 return (
                   <>
                     {canEditWages ? (
                       <>
                         <InlineNumberRow label="Wages (RM)" value={order.wages} field="wages" step="0.01" prefix="RM " onSave={inlineUpdate} />
-                        {calculatedWages > 0 && (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground ml-1 -mt-1 mb-1">
-                            <span>
-                              Formula: {qty.toLocaleString()} × RM {rate.toFixed(4)} × 22% = RM {calculatedWages.toFixed(2)}
-                              {isService ? " (service)" : " (product)"}
-                            </span>
-                            {(hasOverride || !order.wages) && (
-                              <button
-                                className="text-primary underline text-xs"
-                                onClick={() => inlineUpdate("wages", calculatedWages.toFixed(2))}
-                              >
-                                {order.wages ? "Reset" : "Apply"}
-                              </button>
-                            )}
-                          </div>
+                        {calculated > 0 && (
+                          <p className="text-[10px] text-muted-foreground ml-1 -mt-1 mb-1">
+                            {qty.toLocaleString()} × RM {rate.toFixed(4)} × 22% = RM {calculated.toFixed(2)}
+                            {isService ? " (service)" : " (product)"}
+                          </p>
                         )}
+                        <InlineNumberRow label="Transport (RM)" value={order.transport} field="transport" prefix="RM " onSave={inlineUpdate} />
                         <InlineNumberRow label="Allowance (LT)" value={order.allowance_liters} field="allowance_liters" step="1" suffix=" L" onSave={inlineUpdate} />
                         <InlineNumberRow label="Allowance (Unit Price)" value={order.allowance_unit_price} field="allowance_unit_price" step="0.01" prefix="RM " onSave={inlineUpdate} />
                         <InlineNumberRow label="Special Allowance (RM)" value={order.special_allowance} field="special_allowance" prefix="RM " onSave={inlineUpdate} />
-                        <InlineNumberRow label="Transport (RM)" value={order.transport} field="transport" prefix="RM " onSave={inlineUpdate} />
                       </>
                     ) : (
                       <>
                         {!!order.wages && <InfoRow label="Wages" value={`RM ${order.wages.toFixed(2)}`} />}
+                        {order.transport != null && <InfoRow label="Transport" value={`RM ${order.transport}`} />}
                         {!!order.allowance_liters && <InfoRow label="Allowance (LT)" value={`${order.allowance_liters.toLocaleString()} L`} />}
                         {!!order.allowance_unit_price && !!order.allowance_liters && <InfoRow label="Allowance (Unit Price)" value={`RM ${order.allowance_unit_price.toFixed(2)}`} />}
                         {!!order.special_allowance && <InfoRow label="Special Allowance" value={`RM ${order.special_allowance}`} />}
-                        {order.transport && <InfoRow label="Transport" value={`RM ${order.transport}`} />}
                       </>
                     )}
                     {isWagesLocked && (
