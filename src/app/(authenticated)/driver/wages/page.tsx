@@ -63,6 +63,7 @@ export default function DriverWagesPage() {
       .gte("order_date", firstDay)
       .lte("order_date", effectiveLastDay)
       .in("status", ["approved", "delivered"])
+      .not("wages_finalized_at", "is", null)
       .order("order_date");
 
     if (data) setOrders(data);

@@ -102,6 +102,7 @@ export interface Order {
   delivery_remark: string | null;
   remark: string | null;
   driver_remark: string | null;
+  wages_finalized_at: string | null;
   bukku_so_id: number | null;
   bukku_so_number: string | null;
   bukku_do_id: number | null;

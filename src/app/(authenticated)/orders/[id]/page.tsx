@@ -246,8 +246,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     (customer?.name ?? "").toUpperCase().includes("TOP KIM") &&
     (order.destination ?? "").toLowerCase().includes("store");
   const isStockLocked = order.stock_sync_status === "synced";
+  const isWagesLocked = !!order.wages_finalized_at;
   const canEdit = (role === "admin" || role === "office" || role === "manager") && !isStockLocked;
   const canInlineEdit = (role === "admin" || role === "manager") && !isStockLocked;
+  const canEditWages = canInlineEdit && !isWagesLocked;
   const canApprove = order.status === "pending" && (role === "admin" || role === "manager");
   const canReject = order.status === "pending" && (role === "admin" || role === "manager");
   const canDeliver = order.status === "approved" && (role === "admin" || role === "manager") && !isStockLocked;
@@ -426,21 +428,60 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <InfoRow label="SST" value={order.sst_amount ? `RM ${order.sst_amount.toLocaleString("en-MY", { minimumFractionDigits: 2 })}` : null} />
                 </div>
               )}
-              {canInlineEdit ? (
-                <>
-                  <InlineNumberRow label="Allowance (LT)" value={order.allowance_liters} field="allowance_liters" step="1" suffix=" L" onSave={inlineUpdate} />
-                  <InlineNumberRow label="Allowance (Unit Price)" value={order.allowance_unit_price} field="allowance_unit_price" step="0.01" prefix="RM " onSave={inlineUpdate} />
-                  <InlineNumberRow label="Special Allowance (RM)" value={order.special_allowance} field="special_allowance" prefix="RM " onSave={inlineUpdate} />
-                  <InlineNumberRow label="Transport (RM)" value={order.transport} field="transport" prefix="RM " onSave={inlineUpdate} />
-                </>
-              ) : (
-                <>
-                  {!!order.allowance_liters && <InfoRow label="Allowance (LT)" value={`${order.allowance_liters.toLocaleString()} L`} />}
-                  {!!order.allowance_unit_price && !!order.allowance_liters && <InfoRow label="Allowance (Unit Price)" value={`RM ${order.allowance_unit_price.toFixed(2)}`} />}
-                  {!!order.special_allowance && <InfoRow label="Special Allowance" value={`RM ${order.special_allowance}`} />}
-                  {order.transport && <InfoRow label="Transport" value={`RM ${order.transport}`} />}
-                </>
-              )}
+              {/* Wages section */}
+              {(() => {
+                // Auto-calculate wages based on product type
+                const productName = (product?.name ?? "").toUpperCase();
+                const isService = productName.startsWith("TRANSPORTATION");
+                const qty = order.quantity_liters ?? 0;
+                const rate = isService ? (order.unit_price ?? 0) : (order.transport ?? 0);
+                const calculatedWages = qty * rate * 0.22;
+                const currentWages = order.wages ?? 0;
+                const hasOverride = currentWages > 0 && Math.abs(currentWages - calculatedWages) > 0.01;
+
+                return (
+                  <>
+                    {canEditWages ? (
+                      <>
+                        <InlineNumberRow label="Wages (RM)" value={order.wages} field="wages" step="0.01" prefix="RM " onSave={inlineUpdate} />
+                        {calculatedWages > 0 && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground ml-1 -mt-1 mb-1">
+                            <span>
+                              Formula: {qty.toLocaleString()} × RM {rate.toFixed(4)} × 22% = RM {calculatedWages.toFixed(2)}
+                              {isService ? " (service)" : " (product)"}
+                            </span>
+                            {(hasOverride || !order.wages) && (
+                              <button
+                                className="text-primary underline text-xs"
+                                onClick={() => inlineUpdate("wages", calculatedWages.toFixed(2))}
+                              >
+                                {order.wages ? "Reset" : "Apply"}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        <InlineNumberRow label="Allowance (LT)" value={order.allowance_liters} field="allowance_liters" step="1" suffix=" L" onSave={inlineUpdate} />
+                        <InlineNumberRow label="Allowance (Unit Price)" value={order.allowance_unit_price} field="allowance_unit_price" step="0.01" prefix="RM " onSave={inlineUpdate} />
+                        <InlineNumberRow label="Special Allowance (RM)" value={order.special_allowance} field="special_allowance" prefix="RM " onSave={inlineUpdate} />
+                        <InlineNumberRow label="Transport (RM)" value={order.transport} field="transport" prefix="RM " onSave={inlineUpdate} />
+                      </>
+                    ) : (
+                      <>
+                        {!!order.wages && <InfoRow label="Wages" value={`RM ${order.wages.toFixed(2)}`} />}
+                        {!!order.allowance_liters && <InfoRow label="Allowance (LT)" value={`${order.allowance_liters.toLocaleString()} L`} />}
+                        {!!order.allowance_unit_price && !!order.allowance_liters && <InfoRow label="Allowance (Unit Price)" value={`RM ${order.allowance_unit_price.toFixed(2)}`} />}
+                        {!!order.special_allowance && <InfoRow label="Special Allowance" value={`RM ${order.special_allowance}`} />}
+                        {order.transport && <InfoRow label="Transport" value={`RM ${order.transport}`} />}
+                      </>
+                    )}
+                    {isWagesLocked && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                        <Lock className="w-3 h-3" /> Wages finalised — fields locked
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </CardContent>
           </Card>
 

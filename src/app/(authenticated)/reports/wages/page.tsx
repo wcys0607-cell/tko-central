@@ -12,7 +12,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Link from "next/link";
-import { ArrowLeft, Download, Send, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, Send, Loader2, Lock, Unlock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 interface DriverWage {
   driver_id: string;
@@ -55,6 +57,8 @@ export default function WagesReportPage() {
   const [data, setData] = useState<DriverWage[]>([]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [isFinalized, setIsFinalized] = useState(false);
 
   const generate = useCallback(async () => {
     setLoading(true);
@@ -66,13 +70,17 @@ export default function WagesReportPage() {
     const { data: orders } = await supabase
       .from("orders")
       .select(
-        "order_date, quantity_liters, wages, allowance_liters, allowance_unit_price, special_allowance, transport, destination, load_from, driver_id, driver:drivers!orders_driver_id_fkey(id, name), vehicle:vehicles!orders_vehicle_id_fkey(plate_number, capacity_liters), customer:customers!orders_customer_id_fkey(name)"
+        "order_date, quantity_liters, wages, allowance_liters, allowance_unit_price, special_allowance, transport, destination, load_from, driver_id, wages_finalized_at, driver:drivers!orders_driver_id_fkey(id, name), vehicle:vehicles!orders_vehicle_id_fkey(plate_number, capacity_liters), customer:customers!orders_customer_id_fkey(name)"
       )
       .gte("order_date", firstDay)
       .lte("order_date", lastDayStr)
       .in("status", ["approved", "delivered"])
       .not("driver_id", "is", null)
       .order("order_date");
+
+    // Check if all orders are finalized
+    const allFinalized = (orders ?? []).length > 0 && (orders ?? []).every((o: Record<string, unknown>) => o.wages_finalized_at !== null);
+    setIsFinalized(allFinalized);
 
     // Group by driver
     const driverMap = new Map<string, DriverWage>();
@@ -342,6 +350,34 @@ export default function WagesReportPage() {
     XLSX.writeFile(wb, `Wages-${month}.xlsx`);
   }
 
+  async function handleFinalize() {
+    const action = isFinalized ? "unfinalize" : "finalize";
+    const confirmMsg = isFinalized
+      ? "Unfinalise wages? Drivers will no longer see this month's wages and wage fields will be editable again."
+      : "Finalise wages for this month? Drivers will be able to see their wages and wage fields will be locked.";
+    if (!confirm(confirmMsg)) return;
+
+    setFinalizing(true);
+    try {
+      const res = await fetch("/api/reports/finalize-wages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month, action }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        toast.error(result.error || "Failed");
+      } else {
+        toast.success(result.message);
+        setIsFinalized(!isFinalized);
+        generate(); // Refresh data
+      }
+    } catch {
+      toast.error("Failed to update finalisation status");
+    }
+    setFinalizing(false);
+  }
+
   async function handleSendWhatsApp() {
     setSending(true);
     try {
@@ -400,6 +436,26 @@ export default function WagesReportPage() {
           )}
           Send to Drivers
         </Button>
+        <Button
+          size="sm"
+          variant={isFinalized ? "outline" : "default"}
+          onClick={handleFinalize}
+          disabled={data.length === 0 || finalizing}
+        >
+          {finalizing ? (
+            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+          ) : isFinalized ? (
+            <Unlock className="w-4 h-4 mr-1" />
+          ) : (
+            <Lock className="w-4 h-4 mr-1" />
+          )}
+          {isFinalized ? "Unfinalise" : "Finalise Wages"}
+        </Button>
+        {isFinalized && (
+          <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+            Finalised
+          </Badge>
+        )}
       </div>
 
       {loading ? (
