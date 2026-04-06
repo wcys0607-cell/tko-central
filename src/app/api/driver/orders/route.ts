@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
        items:order_items(product_id, quantity_liters, product:product_id(name))`
     )
     .eq("driver_id", driverId)
-    .eq("status", "approved")
+    .in("status", ["approved", "delivered"])
     .gte("order_date", from)
     .lte("order_date", to)
     .order("order_date", { ascending: false })
