@@ -6,6 +6,7 @@ import type { Order } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import Link from "next/link";
 import { ArrowLeft, Lock, MessageSquare } from "lucide-react";
 import { format, addDays, isToday, isTomorrow, isYesterday } from "date-fns";
@@ -199,65 +200,66 @@ export default function DriverOrdersPage() {
                   <Badge variant="secondary" className="text-[10px]">{monthOrders.length}</Badge>
                 </div>
                 <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-muted/50 text-muted-foreground">
-                        <th className="text-left py-2 px-2 font-medium">Date</th>
-                        <th className="text-left py-2 px-2 font-medium">Customer</th>
-                        <th className="text-right py-2 px-2 font-medium">Qty (L)</th>
-                        <th className="text-left py-2 px-2 font-medium">Remark</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {monthOrders.map((o) => {
-                        const cust = o.customer as { name: string; short_name?: string | null } | null;
-                        const custName = cust?.short_name || cust?.name || "—";
-                        const items = (o.items ?? []) as unknown as { product_id: string; quantity_liters: number; product: { name: string } | null }[];
-                        const dieselItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("DIESEL"));
-                        const ltItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("(LT)"));
-                        const qty = dieselItem?.quantity_liters ?? ltItem?.quantity_liters ?? o.quantity_liters;
-                        const editable = isRemarkEditable(o.order_date);
+                  <div className="overflow-x-auto">
+                    <Table className="w-full">
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="h-6 px-1.5 text-[11px]">Date</TableHead>
+                          <TableHead className="h-6 px-1.5 text-[11px]">Customer</TableHead>
+                          <TableHead className="h-6 px-1.5 text-[11px]">Address</TableHead>
+                          <TableHead className="h-6 px-1.5 text-[11px] text-right">Qty</TableHead>
+                          <TableHead className="h-6 px-1.5 text-[11px]">Remark</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {monthOrders.map((o) => {
+                          const cust = o.customer as { name: string; short_name?: string | null } | null;
+                          const custName = cust?.short_name || cust?.name || "—";
+                          const items = (o.items ?? []) as unknown as { product_id: string; quantity_liters: number; product: { name: string } | null }[];
+                          const dieselItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("DIESEL"));
+                          const ltItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("(LT)"));
+                          const qty = dieselItem?.quantity_liters ?? ltItem?.quantity_liters ?? o.quantity_liters;
+                          const editable = isRemarkEditable(o.order_date);
 
-                        return (
-                          <tr key={o.id} className="hover:bg-muted/30">
-                            <td className="py-2 px-2 whitespace-nowrap text-muted-foreground">
-                              {dateLabel(o.order_date)}
-                            </td>
-                            <td className="py-2 px-2">
-                              <p className="font-medium truncate max-w-[120px]">{custName}</p>
-                              {o.destination && (
-                                <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">
-                                  {o.destination.split("\n")[0]}
-                                </p>
-                              )}
-                            </td>
-                            <td className="py-2 px-2 text-right font-semibold whitespace-nowrap">
-                              {qty ? Number(qty).toLocaleString() : "—"}
-                            </td>
-                            <td className="py-2 px-2">
-                              <div className="flex items-center gap-1">
-                                {editable ? (
-                                  <MessageSquare className="w-3 h-3 text-muted-foreground shrink-0" />
-                                ) : (
-                                  <Lock className="w-3 h-3 text-muted-foreground shrink-0" />
-                                )}
-                                <Input
-                                  placeholder={editable ? "Remark..." : ""}
-                                  value={remarkDrafts[o.id] ?? ""}
-                                  disabled={!editable || savingIds.has(o.id)}
-                                  onChange={(e) =>
-                                    setRemarkDrafts((prev) => ({ ...prev, [o.id]: e.target.value }))
-                                  }
-                                  onBlur={() => saveRemark(o.id)}
-                                  className="h-6 text-xs min-w-[80px]"
-                                />
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                          return (
+                            <TableRow key={o.id}>
+                              <TableCell className="py-0.5 px-1.5 text-[11px] whitespace-nowrap text-muted-foreground">
+                                {dateLabel(o.order_date)}
+                              </TableCell>
+                              <TableCell className="py-0.5 px-1.5 text-[11px] font-medium whitespace-nowrap">
+                                {custName}
+                              </TableCell>
+                              <TableCell className="py-0.5 px-1.5 text-[11px] text-muted-foreground max-w-[120px] truncate">
+                                {o.destination ? o.destination.split("\n")[0] : "—"}
+                              </TableCell>
+                              <TableCell className="py-0.5 px-1.5 text-[11px] text-right font-semibold whitespace-nowrap">
+                                {qty ? Number(qty).toLocaleString() : "—"}
+                              </TableCell>
+                              <TableCell className="py-0.5 px-1.5 text-[11px]">
+                                <div className="flex items-center gap-1">
+                                  {editable ? (
+                                    <MessageSquare className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+                                  ) : (
+                                    <Lock className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+                                  )}
+                                  <Input
+                                    placeholder={editable ? "Remark..." : ""}
+                                    value={remarkDrafts[o.id] ?? ""}
+                                    disabled={!editable || savingIds.has(o.id)}
+                                    onChange={(e) =>
+                                      setRemarkDrafts((prev) => ({ ...prev, [o.id]: e.target.value }))
+                                    }
+                                    onBlur={() => saveRemark(o.id)}
+                                    className="h-5 text-[11px] min-w-[60px] px-1"
+                                  />
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </div>
             );
