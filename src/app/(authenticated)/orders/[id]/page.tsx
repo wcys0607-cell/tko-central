@@ -462,12 +462,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     {canEditWages ? (
                       <>
                         <InlineNumberRow label="Wages (RM)" value={order.wages} field="wages" step="0.01" prefix="RM " onSave={inlineUpdate} />
-                        {calculated > 0 && (
-                          <p className="text-[10px] text-muted-foreground ml-1 -mt-1 mb-1">
-                            {qty.toLocaleString()} × RM {rate.toFixed(4)} × 22% = RM {calculated.toFixed(2)}
-                            {isService ? " (service)" : " (product)"}
-                          </p>
-                        )}
                         <InlineNumberRow label="Transport (RM)" value={order.transport} field="transport" prefix="RM " onSave={inlineUpdate} />
                         <InlineNumberRow label="Allowance (LT)" value={order.allowance_liters} field="allowance_liters" step="1" suffix=" L" onSave={inlineUpdate} />
                         <InlineNumberRow label="Allowance (Unit Price)" value={order.allowance_unit_price} field="allowance_unit_price" step="0.01" prefix="RM " onSave={inlineUpdate} />
