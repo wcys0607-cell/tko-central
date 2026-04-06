@@ -3,12 +3,11 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { Order } from "@/lib/types";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Package, Lock, MessageSquare } from "lucide-react";
+import { ArrowLeft, Lock, MessageSquare } from "lucide-react";
 import { format, addDays, isToday, isTomorrow, isYesterday } from "date-fns";
 import { toast } from "sonner";
 
@@ -168,7 +167,7 @@ export default function DriverOrdersPage() {
   const { from, to } = getDateRange();
 
   return (
-    <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-4 animate-fade-in">
+    <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
         <Link href="/driver">
           <Button variant="ghost" size="icon">
@@ -188,79 +187,77 @@ export default function DriverOrdersPage() {
       ) : orders.length === 0 ? (
         <p className="text-muted-foreground text-center py-8">No orders in this period</p>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {grouped.map(([monthKey, monthOrders]) => {
             const monthDate = new Date(monthKey + "-01T00:00:00");
             const monthLabel = format(monthDate, "MMMM yyyy");
 
             return (
               <div key={monthKey}>
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-2">
                   <h2 className="text-sm font-bold text-primary">{monthLabel}</h2>
                   <Badge variant="secondary" className="text-[10px]">{monthOrders.length}</Badge>
                 </div>
-                <div className="space-y-2">
-                  {monthOrders.map((o) => {
-                    const cust = o.customer as { name: string; short_name?: string | null } | null;
-                    const custName = cust?.short_name || cust?.name || "—";
-                    const items = (o.items ?? []) as unknown as { product_id: string; quantity_liters: number; product: { name: string } | null }[];
-                    const dieselItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("DIESEL"));
-                    const ltItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("(LT)"));
-                    const qty = dieselItem?.quantity_liters ?? ltItem?.quantity_liters ?? o.quantity_liters;
-                    const editable = isRemarkEditable(o.order_date);
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-muted/50 text-muted-foreground">
+                        <th className="text-left py-2 px-2 font-medium">Date</th>
+                        <th className="text-left py-2 px-2 font-medium">Customer</th>
+                        <th className="text-right py-2 px-2 font-medium">Qty (L)</th>
+                        <th className="text-left py-2 px-2 font-medium">Remark</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {monthOrders.map((o) => {
+                        const cust = o.customer as { name: string; short_name?: string | null } | null;
+                        const custName = cust?.short_name || cust?.name || "—";
+                        const items = (o.items ?? []) as unknown as { product_id: string; quantity_liters: number; product: { name: string } | null }[];
+                        const dieselItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("DIESEL"));
+                        const ltItem = items.find((i) => (i.product?.name ?? "").toUpperCase().includes("(LT)"));
+                        const qty = dieselItem?.quantity_liters ?? ltItem?.quantity_liters ?? o.quantity_liters;
+                        const editable = isRemarkEditable(o.order_date);
 
-                    return (
-                      <Card key={o.id}>
-                        <CardContent className="py-3 px-4">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold text-sm truncate">{custName}</p>
-                                <span className="text-[10px] text-muted-foreground shrink-0">
-                                  {dateLabel(o.order_date)}
-                                </span>
-                              </div>
+                        return (
+                          <tr key={o.id} className="hover:bg-muted/30">
+                            <td className="py-2 px-2 whitespace-nowrap text-muted-foreground">
+                              {dateLabel(o.order_date)}
+                            </td>
+                            <td className="py-2 px-2">
+                              <p className="font-medium truncate max-w-[120px]">{custName}</p>
                               {o.destination && (
-                                <p className="text-xs text-muted-foreground flex items-start gap-1 mt-0.5">
-                                  <MapPin className="w-3 h-3 mt-0.5 shrink-0" />
-                                  <span className="line-clamp-2">{o.destination.split("\n")[0]}</span>
+                                <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+                                  {o.destination.split("\n")[0]}
                                 </p>
                               )}
-                              {o.delivery_remark && (
-                                <p className="text-xs text-muted-foreground mt-0.5 italic">
-                                  {o.delivery_remark}
-                                </p>
-                              )}
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className="font-bold text-sm flex items-center gap-1 justify-end">
-                                <Package className="w-3 h-3" />
-                                {qty ? `${Number(qty).toLocaleString()}L` : "—"}
-                              </p>
-                            </div>
-                          </div>
-                          {/* Driver remark input */}
-                          <div className="mt-2 flex items-center gap-1.5">
-                            {editable ? (
-                              <MessageSquare className="w-3 h-3 text-muted-foreground shrink-0" />
-                            ) : (
-                              <Lock className="w-3 h-3 text-muted-foreground shrink-0" />
-                            )}
-                            <Input
-                              placeholder={editable ? "Add your remark..." : ""}
-                              value={remarkDrafts[o.id] ?? ""}
-                              disabled={!editable || savingIds.has(o.id)}
-                              onChange={(e) =>
-                                setRemarkDrafts((prev) => ({ ...prev, [o.id]: e.target.value }))
-                              }
-                              onBlur={() => saveRemark(o.id)}
-                              className="h-7 text-xs"
-                            />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                            </td>
+                            <td className="py-2 px-2 text-right font-semibold whitespace-nowrap">
+                              {qty ? Number(qty).toLocaleString() : "—"}
+                            </td>
+                            <td className="py-2 px-2">
+                              <div className="flex items-center gap-1">
+                                {editable ? (
+                                  <MessageSquare className="w-3 h-3 text-muted-foreground shrink-0" />
+                                ) : (
+                                  <Lock className="w-3 h-3 text-muted-foreground shrink-0" />
+                                )}
+                                <Input
+                                  placeholder={editable ? "Remark..." : ""}
+                                  value={remarkDrafts[o.id] ?? ""}
+                                  disabled={!editable || savingIds.has(o.id)}
+                                  onChange={(e) =>
+                                    setRemarkDrafts((prev) => ({ ...prev, [o.id]: e.target.value }))
+                                  }
+                                  onBlur={() => saveRemark(o.id)}
+                                  className="h-6 text-xs min-w-[80px]"
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             );
