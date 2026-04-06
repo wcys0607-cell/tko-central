@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import Link from "next/link";
-import { ArrowLeft, Lock, MessageSquare } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { format, addDays, isToday, isTomorrow, isYesterday } from "date-fns";
 import { toast } from "sonner";
 
@@ -237,11 +237,6 @@ export default function DriverOrdersPage() {
                               </TableCell>
                               <TableCell className="py-0.5 px-1.5 text-[11px]">
                                 <div className="flex items-center gap-1">
-                                  {editable ? (
-                                    <MessageSquare className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
-                                  ) : (
-                                    <Lock className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
-                                  )}
                                   <Input
                                     placeholder={editable ? "Remark..." : ""}
                                     value={remarkDrafts[o.id] ?? ""}
