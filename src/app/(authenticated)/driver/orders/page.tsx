@@ -232,7 +232,7 @@ export default function DriverOrdersPage() {
                               <TableCell className="py-0.5 px-1.5 text-[11px] text-muted-foreground max-w-[120px] truncate">
                                 {o.destination ? o.destination.split("\n")[0] : "—"}
                               </TableCell>
-                              <TableCell className="py-0.5 px-1.5 text-[11px] text-right font-semibold whitespace-nowrap">
+                              <TableCell className="py-0.5 px-1.5 text-[11px] text-right whitespace-nowrap">
                                 {qty ? Number(qty).toLocaleString() : "—"}
                               </TableCell>
                               <TableCell className="py-0.5 px-1.5 text-[11px]">
