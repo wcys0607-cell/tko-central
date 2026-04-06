@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Link from "next/link";
-import { ArrowLeft, Download, Send, Loader2, Lock, Unlock } from "lucide-react";
+import { ArrowLeft, Download, Send, Loader2, Lock, Unlock, ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
@@ -34,7 +34,15 @@ interface DriverWage {
     transport: number;
     wages: number;
     allowance: number;
+    driver_remark: string;
   }[];
+}
+
+/** Shorten destination: take text before first '-' */
+function shortDest(dest: string): string {
+  if (!dest) return "";
+  const idx = dest.indexOf("-");
+  return (idx > 0 ? dest.slice(0, idx) : dest).trim();
 }
 
 function getMonthOptions() {
@@ -59,6 +67,7 @@ export default function WagesReportPage() {
   const [sending, setSending] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [isFinalized, setIsFinalized] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const generate = useCallback(async () => {
     setLoading(true);
@@ -70,7 +79,7 @@ export default function WagesReportPage() {
     const { data: orders } = await supabase
       .from("orders")
       .select(
-        "order_date, quantity_liters, wages, allowance_liters, allowance_unit_price, special_allowance, transport, destination, load_from, driver_id, wages_finalized_at, driver:drivers!orders_driver_id_fkey(id, name), vehicle:vehicles!orders_vehicle_id_fkey(plate_number, capacity_liters), customer:customers!orders_customer_id_fkey(name)"
+        "order_date, quantity_liters, wages, allowance_liters, allowance_unit_price, special_allowance, transport, destination, load_from, driver_id, driver_remark, wages_finalized_at, driver:drivers!orders_driver_id_fkey(id, name), vehicle:vehicles!orders_vehicle_id_fkey(plate_number, capacity_liters), customer:customers!orders_customer_id_fkey(name)"
       )
       .gte("order_date", firstDay)
       .lte("order_date", lastDayStr)
@@ -124,6 +133,7 @@ export default function WagesReportPage() {
         transport: o.transport ?? 0,
         wages: o.wages ?? 0,
         allowance,
+        driver_remark: o.driver_remark ?? "",
       });
     }
 
@@ -183,55 +193,68 @@ export default function WagesReportPage() {
       // Row 5: empty
       rows.push([]);
       // Row 6: headers
-      rows.push(["Date", "Truck No.", "Customer Name", "Load From", "Destination", "Quantity (L)", "Transport (RM)", "Wages (RM)", "Allowance (RM)"]);
+      const headers = ["Date", "Truck No.", "Customer Name", "Load From", "Destination", "Quantity (L)", "Transport (RM)", "Wages (RM)", "Allowance (RM)"];
+      if (!isFinalized) headers.push("Driver Remark");
+      rows.push(headers);
 
       // Data rows (row 7+)
       for (const o of dw.orders) {
-        rows.push([
+        const row: unknown[] = [
           o.order_date,
           o.plate_number,
           o.customer_name,
           o.load_from,
-          o.destination,
+          shortDest(o.destination),
           o.quantity_liters || null,
           o.transport || null,
           o.wages || null,
           o.allowance || null,
-        ]);
+        ];
+        if (!isFinalized) row.push(o.driver_remark || "");
+        rows.push(row);
       }
+
+      const colCount = isFinalized ? 9 : 10;
+      const lastCol = isFinalized ? "I" : "J";
 
       // Total row
       const lastDataRow = 6 + dw.orders.length;
-      rows.push([
+      const totalRow: unknown[] = [
         "", "", "", "", "TOTAL", "",
         { f: `SUM(G7:G${lastDataRow})` },
         { f: `SUM(H7:H${lastDataRow})` },
         { f: `SUM(I7:I${lastDataRow})` },
-      ]);
+      ];
+      if (!isFinalized) totalRow.push("");
+      rows.push(totalRow);
 
       // Grand total row
-      rows.push([
+      const grandRow: unknown[] = [
         "", "", "", "", "", "", "", "GRAND TOTAL",
         { f: `G${lastDataRow + 1}+H${lastDataRow + 1}+I${lastDataRow + 1}` },
-      ]);
+      ];
+      if (!isFinalized) grandRow.push("");
+      rows.push(grandRow);
 
       const ws = XLSX.utils.aoa_to_sheet(rows);
 
       // Column widths (A4 portrait optimised)
-      ws["!cols"] = [
+      const cols = [
         { wch: 11 },  // A: Date
         { wch: 11 },  // B: Truck No.
-        { wch: 28 },  // C: Customer Name
-        { wch: 18 },  // D: Load From
-        { wch: 20 },  // E: Destination
-        { wch: 11 },  // F: Quantity
-        { wch: 11 },  // G: Transport
-        { wch: 11 },  // H: Wages
-        { wch: 11 },  // I: Allowance
+        { wch: 24 },  // C: Customer Name
+        { wch: 14 },  // D: Load From
+        { wch: 16 },  // E: Destination
+        { wch: 10 },  // F: Quantity
+        { wch: 10 },  // G: Transport
+        { wch: 10 },  // H: Wages
+        { wch: 10 },  // I: Allowance
       ];
+      if (!isFinalized) cols.push({ wch: 18 }); // J: Driver Remark
+      ws["!cols"] = cols;
 
-      // Row heights
-      ws["!rows"] = [
+      // Row heights — fixed for all rows
+      const rowHeights: { hpt: number }[] = [
         { hpt: 22 },  // Row 1: Company name
         { hpt: 14 },  // Row 2: Address
         { hpt: 10 },  // Row 3: separator
@@ -239,14 +262,21 @@ export default function WagesReportPage() {
         { hpt: 8 },   // Row 5: separator
         { hpt: 20 },  // Row 6: headers
       ];
+      for (let r = 0; r < dw.orders.length; r++) {
+        rowHeights.push({ hpt: 16 }); // Fixed height for data rows
+      }
+      rowHeights.push({ hpt: 18 }); // Total row
+      rowHeights.push({ hpt: 18 }); // Grand total row
+      ws["!rows"] = rowHeights;
 
       // Merge cells
+      const lastColIdx = colCount - 1;
       ws["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },  // A1:E1 company name
-        { s: { r: 0, c: 5 }, e: { r: 0, c: 8 } },  // F1:I1 payslip title (right side)
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } },  // A2:I2 address
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 4 } },  // A4:E4 driver name
-        { s: { r: 3, c: 5 }, e: { r: 3, c: 8 } },  // F4:I4 month
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },           // A1:E1 company name
+        { s: { r: 0, c: 5 }, e: { r: 0, c: lastColIdx } },   // F1:last payslip title
+        { s: { r: 1, c: 0 }, e: { r: 1, c: lastColIdx } },   // A2:last address
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 4 } },           // A4:E4 driver name
+        { s: { r: 3, c: 5 }, e: { r: 3, c: lastColIdx } },   // F4:last month
       ];
 
       // Apply styles
@@ -256,8 +286,8 @@ export default function WagesReportPage() {
       // Payslip title - it's in column F after merge but we set on I1 originally
       // Actually with merge F1:I1, the content should be on F1
       ws["F1"] = { v: "DRIVER PAYSLIP", t: "s", s: { font: payslipFont, alignment: { horizontal: "right", vertical: "center" } } };
-      // Remove I1 since we moved content to F1 for the merge
       delete ws["I1"];
+      if (!isFinalized) delete ws["J1"];
 
       // Row 2: Address
       const cellA2 = ws["A2"];
@@ -268,9 +298,10 @@ export default function WagesReportPage() {
       if (cellA4) cellA4.s = { font: infoFont, alignment: { vertical: "center" } };
       ws["F4"] = { v: `Month: ${monthLabel}`, t: "s", s: { font: infoFont, alignment: { horizontal: "right", vertical: "center" } } };
       delete ws["I4"];
+      if (!isFinalized) delete ws["J4"];
 
       // Row 6: Headers (row index 5)
-      const headerCols = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+      const headerCols = isFinalized ? ["A", "B", "C", "D", "E", "F", "G", "H", "I"] : ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
       for (const col of headerCols) {
         const ref = `${col}6`;
         if (ws[ref]) {
@@ -289,16 +320,17 @@ export default function WagesReportPage() {
         const isEven = r % 2 === 0;
         const rowFill = isEven ? { fgColor: { rgb: "f7fafc" } } : undefined;
 
-        for (let c = 0; c < 9; c++) {
+        for (let c = 0; c < colCount; c++) {
           const col = headerCols[c];
           const ref = `${col}${rowNum}`;
           if (!ws[ref]) ws[ref] = { v: "", t: "s" };
           const cell = ws[ref];
 
+          const isNumCol = c >= 5 && c <= 8;
           const baseStyle: Record<string, unknown> = {
-            font: c <= 4 ? fontSmall : fontDefault,
+            font: c <= 4 || c === 9 ? fontSmall : fontDefault,
             border: borderAll,
-            alignment: { vertical: "center", horizontal: c >= 5 ? "right" : "left" },
+            alignment: { vertical: "center", horizontal: isNumCol ? "right" : "left" },
           };
           if (rowFill) baseStyle.fill = rowFill;
 
@@ -312,7 +344,7 @@ export default function WagesReportPage() {
 
       // Total row styling
       const totalRowNum = lastDataRow + 1;
-      for (let c = 0; c < 9; c++) {
+      for (let c = 0; c < colCount; c++) {
         const col = headerCols[c];
         const ref = `${col}${totalRowNum}`;
         if (!ws[ref]) ws[ref] = { v: "", t: "s" };
@@ -327,7 +359,7 @@ export default function WagesReportPage() {
 
       // Grand total row styling
       const grandRowNum = totalRowNum + 1;
-      for (let c = 0; c < 9; c++) {
+      for (let c = 0; c < colCount; c++) {
         const col = headerCols[c];
         const ref = `${col}${grandRowNum}`;
         if (!ws[ref]) ws[ref] = { v: "", t: "s" };
@@ -467,37 +499,93 @@ export default function WagesReportPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted border-b">
               <tr>
-                <th className="text-left p-3">Driver</th>
-                <th className="text-right p-3">Deliveries</th>
-                <th className="text-right p-3">Total Qty</th>
-                <th className="text-right p-3">Wages</th>
-                <th className="text-right p-3">Allowance</th>
-                <th className="text-right p-3">Transport</th>
-                <th className="text-right p-3 font-bold">Total</th>
+                <th className="text-left p-2 w-6"></th>
+                <th className="text-left p-2">Driver</th>
+                <th className="text-right p-2">Deliveries</th>
+                <th className="text-right p-2">Total Qty</th>
+                <th className="text-right p-2">Wages</th>
+                <th className="text-right p-2">Allowance</th>
+                <th className="text-right p-2">Transport</th>
+                <th className="text-right p-2 font-bold">Total</th>
               </tr>
             </thead>
             <tbody>
-              {data.map((dw) => (
-                <tr key={dw.driver_id} className="border-b hover:bg-muted">
-                  <td className="p-3 font-medium">{dw.driver_name}</td>
-                  <td className="p-3 text-right">{dw.deliveries}</td>
-                  <td className="p-3 text-right font-mono">{dw.total_qty.toLocaleString()}</td>
-                  <td className="p-3 text-right font-mono">{dw.total_wages.toFixed(2)}</td>
-                  <td className="p-3 text-right font-mono">{dw.total_allowance.toFixed(2)}</td>
-                  <td className="p-3 text-right font-mono">{dw.total_transport.toFixed(2)}</td>
-                  <td className="p-3 text-right font-mono font-bold">
-                    {(dw.total_wages + dw.total_allowance + dw.total_transport).toFixed(2)}
-                  </td>
-                </tr>
-              ))}
+              {data.map((dw) => {
+                const isOpen = expanded.has(dw.driver_id);
+                return (
+                  <>
+                    <tr
+                      key={dw.driver_id}
+                      className="border-b hover:bg-muted cursor-pointer"
+                      onClick={() => setExpanded((prev) => {
+                        const next = new Set(prev);
+                        next.has(dw.driver_id) ? next.delete(dw.driver_id) : next.add(dw.driver_id);
+                        return next;
+                      })}
+                    >
+                      <td className="p-2 text-muted-foreground">
+                        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </td>
+                      <td className="p-2 font-medium">{dw.driver_name}</td>
+                      <td className="p-2 text-right">{dw.deliveries}</td>
+                      <td className="p-2 text-right font-mono">{dw.total_qty.toLocaleString()}</td>
+                      <td className="p-2 text-right font-mono">{dw.total_wages.toFixed(2)}</td>
+                      <td className="p-2 text-right font-mono">{dw.total_allowance.toFixed(2)}</td>
+                      <td className="p-2 text-right font-mono">{dw.total_transport.toFixed(2)}</td>
+                      <td className="p-2 text-right font-mono font-bold">
+                        {(dw.total_wages + dw.total_allowance + dw.total_transport).toFixed(2)}
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr key={`${dw.driver_id}-detail`}>
+                        <td colSpan={8} className="p-0">
+                          <div className="bg-muted/30 px-4 py-2">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-muted-foreground">
+                                  <th className="text-left py-1 px-1.5 font-medium">Date</th>
+                                  <th className="text-left py-1 px-1.5 font-medium">Truck</th>
+                                  <th className="text-left py-1 px-1.5 font-medium">Customer</th>
+                                  <th className="text-left py-1 px-1.5 font-medium">Destination</th>
+                                  <th className="text-right py-1 px-1.5 font-medium">Qty</th>
+                                  <th className="text-right py-1 px-1.5 font-medium">Transport</th>
+                                  <th className="text-right py-1 px-1.5 font-medium">Wages</th>
+                                  <th className="text-right py-1 px-1.5 font-medium">Allowance</th>
+                                  {!isFinalized && <th className="text-left py-1 px-1.5 font-medium">Driver Remark</th>}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {dw.orders.map((o, i) => (
+                                  <tr key={i} className="border-t border-muted h-7">
+                                    <td className="py-1 px-1.5 whitespace-nowrap">{o.order_date}</td>
+                                    <td className="py-1 px-1.5 whitespace-nowrap">{o.plate_number}</td>
+                                    <td className="py-1 px-1.5 whitespace-nowrap">{o.customer_name}</td>
+                                    <td className="py-1 px-1.5 whitespace-nowrap">{shortDest(o.destination)}</td>
+                                    <td className="py-1 px-1.5 text-right whitespace-nowrap">{o.quantity_liters.toLocaleString()}</td>
+                                    <td className="py-1 px-1.5 text-right whitespace-nowrap">{o.transport.toFixed(2)}</td>
+                                    <td className="py-1 px-1.5 text-right whitespace-nowrap">{o.wages.toFixed(2)}</td>
+                                    <td className="py-1 px-1.5 text-right whitespace-nowrap">{o.allowance.toFixed(2)}</td>
+                                    {!isFinalized && <td className="py-1 px-1.5 text-muted-foreground">{o.driver_remark}</td>}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })}
               <tr className="bg-muted font-bold">
-                <td className="p-3">TOTAL</td>
-                <td className="p-3 text-right">{data.reduce((s, d) => s + d.deliveries, 0)}</td>
-                <td className="p-3 text-right font-mono">{data.reduce((s, d) => s + d.total_qty, 0).toLocaleString()}</td>
-                <td className="p-3 text-right font-mono">{data.reduce((s, d) => s + d.total_wages, 0).toFixed(2)}</td>
-                <td className="p-3 text-right font-mono">{data.reduce((s, d) => s + d.total_allowance, 0).toFixed(2)}</td>
-                <td className="p-3 text-right font-mono">{data.reduce((s, d) => s + d.total_transport, 0).toFixed(2)}</td>
-                <td className="p-3 text-right font-mono">
+                <td className="p-2"></td>
+                <td className="p-2">TOTAL</td>
+                <td className="p-2 text-right">{data.reduce((s, d) => s + d.deliveries, 0)}</td>
+                <td className="p-2 text-right font-mono">{data.reduce((s, d) => s + d.total_qty, 0).toLocaleString()}</td>
+                <td className="p-2 text-right font-mono">{data.reduce((s, d) => s + d.total_wages, 0).toFixed(2)}</td>
+                <td className="p-2 text-right font-mono">{data.reduce((s, d) => s + d.total_allowance, 0).toFixed(2)}</td>
+                <td className="p-2 text-right font-mono">{data.reduce((s, d) => s + d.total_transport, 0).toFixed(2)}</td>
+                <td className="p-2 text-right font-mono">
                   {data.reduce((s, d) => s + d.total_wages + d.total_allowance + d.total_transport, 0).toFixed(2)}
                 </td>
               </tr>
